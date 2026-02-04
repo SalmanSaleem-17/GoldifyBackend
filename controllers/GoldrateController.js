@@ -1,5 +1,5 @@
 const GoldRate = require("../models/GoldRate");
-const { CurrencyCountries } = require("../utils/Currencycountries");
+const { CurrencyCountries } = require("../utils/CurrencyCountries");
 
 // Constants
 const TMR_CONVERSION = {
