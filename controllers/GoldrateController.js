@@ -1,4 +1,4 @@
-const GoldRate = require("../models/Goldrate");
+const GoldRate = require("../models/GoldRate");
 const { CurrencyCountries } = require("../utils/Currencycountries");
 
 // Constants
