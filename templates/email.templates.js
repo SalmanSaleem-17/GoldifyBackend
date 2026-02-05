@@ -1,16 +1,15 @@
-//templates/email.templates.js
-
 /**
- * Email Templates
- * Professional HTML email templates for various purposes
+ * Email Templates - Refined Minimalist Design
+ * Elegant, clean HTML email templates with sophisticated color palette
  */
 
 const emailConfig = require("../config/email.config");
 
 /**
- * Base email template wrapper
+ * Refined Minimalist Base Template
+ * Color Palette: Deep Navy (#0F172A), Warm Gold (#D4AF37), Soft Gray (#F8FAFC)
  */
-const baseTemplate = (content, headerTitle = "🏆 Goldify") => `
+const baseTemplate = (content, headerTitle = "Goldify") => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -25,98 +24,256 @@ const baseTemplate = (content, headerTitle = "🏆 Goldify") => `
       box-sizing: border-box;
     }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      line-height: 1.6;
-      color: #1f2937;
-      background-color: #f9fafb;
-      padding: 20px;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      line-height: 1.5;
+      color: #334155;
+      background-color: #F8FAFC;
+      padding: 0;
     }
     .email-wrapper {
-      max-width: 600px;
+      background-color: #F8FAFC;
+      padding: 40px 20px;
+    }
+    .email-container {
+      max-width: 560px;
       margin: 0 auto;
-      background-color: #ffffff;
-      border-radius: 12px;
+      background-color: #FFFFFF;
+      border-radius: 4px;
       overflow: hidden;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
     }
     .header {
-      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-      padding: 40px 30px;
+      background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+      padding: 28px 32px;
       text-align: center;
     }
-    .header h1 {
-      color: #ffffff;
-      font-size: 32px;
-      font-weight: 700;
-      margin: 0;
-      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    .logo {
+      font-size: 18px;
+      font-weight: 600;
+      color: #FFFFFF;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .logo-accent {
+      color: #D4AF37;
+      font-size: 20px;
+      margin-right: 6px;
     }
     .content {
-      padding: 40px 30px;
+      padding: 32px;
     }
-    .content h2 {
-      color: #d97706;
-      font-size: 24px;
-      margin-bottom: 20px;
+    .content h1 {
+      font-size: 20px;
       font-weight: 600;
+      color: #0F172A;
+      margin-bottom: 16px;
+      letter-spacing: -0.3px;
     }
     .content p {
-      color: #4b5563;
-      font-size: 16px;
-      margin-bottom: 16px;
-      line-height: 1.7;
+      color: #475569;
+      font-size: 14px;
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+    .content strong {
+      color: #0F172A;
+      font-weight: 600;
+    }
+    .button {
+      display: inline-block;
+      padding: 11px 24px;
+      background: linear-gradient(135deg, #D4AF37 0%, #B8941F 100%);
+      color: #FFFFFF;
+      text-decoration: none;
+      border-radius: 3px;
+      font-weight: 500;
+      font-size: 13px;
+      margin: 20px 0 16px;
+      letter-spacing: 0.3px;
+    }
+    .otp-box {
+      background-color: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      padding: 24px;
+      text-align: center;
+      border-radius: 3px;
+      margin: 20px 0;
+    }
+    .otp-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #64748B;
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+    .otp-code {
+      font-size: 32px;
+      font-weight: 600;
+      color: #0F172A;
+      letter-spacing: 6px;
+      font-family: 'Courier New', monospace;
+      margin: 8px 0;
+    }
+    .otp-expiry {
+      font-size: 11px;
+      color: #64748B;
+      margin-top: 12px;
+    }
+    .info-box {
+      background-color: #FEF3C7;
+      padding: 14px 16px;
+      border-radius: 3px;
+      margin: 20px 0;
+      border-left: 2px solid #D4AF37;
+    }
+    .info-box p {
+      margin: 0;
+      font-size: 12px;
+      color: #78350F;
+      line-height: 1.5;
+    }
+    .link-box {
+      background-color: #F8FAFC;
+      padding: 12px 16px;
+      border-radius: 3px;
+      margin: 16px 0;
+      word-break: break-all;
+      border: 1px solid #E2E8F0;
+    }
+    .link-box p {
+      margin: 0;
+      font-size: 11px;
+      color: #64748B;
+      font-family: 'Courier New', monospace;
+    }
+    .checklist {
+      list-style: none;
+      padding: 0;
+      margin: 20px 0;
+    }
+    .checklist li {
+      padding: 10px 0;
+      border-bottom: 1px solid #F1F5F9;
+      font-size: 13px;
+      color: #475569;
+      line-height: 1.5;
+    }
+    .checklist li:last-child {
+      border-bottom: none;
+    }
+    .checklist li::before {
+      content: "✓";
+      color: #D4AF37;
+      font-weight: 600;
+      margin-right: 10px;
+      font-size: 14px;
+    }
+    .highlight-box {
+      background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+      padding: 16px 20px;
+      border-radius: 3px;
+      margin: 20px 0;
+      border: 1px solid #F59E0B;
+    }
+    .highlight-box p {
+      margin: 0;
+      color: #78350F;
+      font-size: 12px;
+      line-height: 1.5;
     }
     .footer {
-      background-color: #f9fafb;
-      padding: 30px;
+      background-color: #F8FAFC;
+      padding: 24px 32px;
+      border-top: 1px solid #E2E8F0;
+    }
+    .footer-links {
+      margin-bottom: 16px;
       text-align: center;
-      border-top: 1px solid #e5e7eb;
     }
-    .footer p {
-      color: #6b7280;
-      font-size: 14px;
-      margin: 5px 0;
+    .footer-links a {
+      color: #64748B;
+      text-decoration: none;
+      font-size: 11px;
+      margin: 0 12px;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      font-weight: 500;
     }
-    .footer a {
-      color: #d97706;
+    .footer-links a:hover {
+      color: #0F172A;
+    }
+    .footer-text {
+      color: #94A3B8;
+      font-size: 11px;
+      line-height: 1.6;
+      text-align: center;
+    }
+    .footer-text a {
+      color: #64748B;
       text-decoration: none;
       font-weight: 500;
     }
-    .footer a:hover {
-      text-decoration: underline;
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, #E2E8F0 50%, transparent 100%);
+      margin: 24px 0;
+    }
+    .brand-bar {
+      height: 3px;
+      background: linear-gradient(90deg, #D4AF37 0%, #B8941F 50%, #D4AF37 100%);
     }
     @media only screen and (max-width: 600px) {
-      body {
-        padding: 10px;
+      .email-wrapper {
+        padding: 20px 10px;
       }
       .header {
-        padding: 30px 20px;
-      }
-      .header h1 {
-        font-size: 26px;
+        padding: 24px 20px;
       }
       .content {
-        padding: 30px 20px;
+        padding: 24px 20px;
       }
-      .content h2 {
-        font-size: 20px;
+      .footer {
+        padding: 20px;
+      }
+      .content h1 {
+        font-size: 18px;
+      }
+      .otp-code {
+        font-size: 28px;
+        letter-spacing: 4px;
+      }
+      .footer-links a {
+        display: block;
+        margin: 8px 0;
       }
     }
   </style>
 </head>
 <body>
   <div class="email-wrapper">
-    <div class="header">
-      <h1>${headerTitle}</h1>
-    </div>
-    <div class="content">
-      ${content}
-    </div>
-    <div class="footer">
-      <p>© ${new Date().getFullYear()} Goldify. All rights reserved.</p>
-      <p>
-        Need help? <a href="mailto:${emailConfig.from.email}">Contact Support</a>
-      </p>
+    <div class="email-container">
+      <div class="brand-bar"></div>
+      <div class="header">
+        <div class="logo">
+          <span class="logo-accent">◆</span>Goldify
+        </div>
+      </div>
+      <div class="content">
+        ${content}
+      </div>
+      <div class="footer">
+        <div class="footer-links">
+          <a href="https://goldify.pro/features">Features</a>
+          <a href="https://goldify.pro/about">About</a>
+          <a href="https://goldify.pro/contact">Contact</a>
+        </div>
+        <p class="footer-text">
+          © ${new Date().getFullYear()} Goldify. All rights reserved.<br>
+          Questions? <a href="https://goldify.pro/contact">Contact us</a> · 
+          <a href="https://goldify.pro/newsletter/unsubscribe">Unsubscribe</a>
+        </p>
+      </div>
     </div>
   </div>
 </body>
@@ -128,35 +285,24 @@ const baseTemplate = (content, headerTitle = "🏆 Goldify") => `
  */
 const otpTemplate = (name, otp) => {
   const content = `
-    <h2>Welcome to Goldify, ${name}! 👋</h2>
-    <p>Thank you for registering with us. We're excited to have you on board!</p>
-    <p>To complete your registration and verify your email address, please use the One-Time Password (OTP) below:</p>
+    <h1>Email Verification</h1>
+    <p>Hello <strong>${name}</strong>,</p>
+    <p>Welcome to Goldify. Please verify your email address using the code below:</p>
     
-    <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 3px dashed #f59e0b; padding: 30px; text-align: center; border-radius: 12px; margin: 30px 0;">
-      <p style="margin: 0 0 10px 0; color: #78716c; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Your Verification Code</p>
-      <div style="font-size: 42px; font-weight: 800; color: #d97706; letter-spacing: 10px; font-family: 'Courier New', monospace; text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
-        ${otp}
-      </div>
-      <p style="margin: 15px 0 0 0; color: #92400e; font-size: 13px; font-weight: 500;">
-        ⏰ Valid for 10 minutes
-      </p>
+    <div class="otp-box">
+      <div class="otp-label">Verification Code</div>
+      <div class="otp-code">${otp}</div>
+      <div class="otp-expiry">Valid for 10 minutes</div>
     </div>
     
-    <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; border-radius: 8px; margin: 20px 0;">
-      <p style="margin: 0; color: #78716c; font-size: 14px;">
-        <strong>Security Tip:</strong> Never share this code with anyone. Our team will never ask for your OTP.
-      </p>
+    <div class="info-box">
+      <p><strong>Security Notice:</strong> Never share this code. Our team will never request your verification code.</p>
     </div>
     
-    <p>If you didn't create an account with Goldify, please ignore this email or contact our support team if you have concerns.</p>
-    
-    <p style="margin-top: 30px; color: #4b5563;">
-      Best regards,<br>
-      <strong style="color: #d97706;">The Goldify Team</strong>
-    </p>
+    <p style="font-size: 12px; color: #94A3B8; margin-top: 24px;">If you didn't create an account, please ignore this email.</p>
   `;
 
-  return baseTemplate(content, "🏆 Goldify - Verify Your Email");
+  return baseTemplate(content, "Goldify - Verify Your Email");
 };
 
 /**
@@ -164,97 +310,51 @@ const otpTemplate = (name, otp) => {
  */
 const passwordResetTemplate = (name, resetURL) => {
   const content = `
-    <h2>Password Reset Request 🔐</h2>
-    <p>Hi <strong>${name}</strong>,</p>
-    <p>We received a request to reset your password for your Goldify account. Don't worry, we're here to help!</p>
+    <h1>Password Reset Request</h1>
+    <p>Hello <strong>${name}</strong>,</p>
+    <p>We received a request to reset your password. Click the button below to proceed:</p>
     
-    <p>Click the button below to create a new password:</p>
+    <a href="${resetURL}" class="button">Reset Password</a>
     
-    <div style="text-align: center; margin: 35px 0;">
-      <a href="${resetURL}" 
-         style="display: inline-block; 
-                padding: 16px 40px; 
-                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); 
-                color: #ffffff; 
-                text-decoration: none; 
-                border-radius: 10px; 
-                font-weight: 700; 
-                font-size: 16px;
-                box-shadow: 0 4px 6px rgba(245, 158, 11, 0.3);
-                transition: all 0.3s ease;">
-        Reset My Password
-      </a>
+    <div class="info-box">
+      <p><strong>Important:</strong> This link expires in 30 minutes for security.</p>
     </div>
     
-    <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 15px; border-radius: 8px; margin: 25px 0;">
-      <p style="margin: 0; color: #991b1b; font-size: 14px;">
-        <strong>⚠️ Important:</strong> This link will expire in <strong>30 minutes</strong> for security reasons.
-      </p>
+    <div class="link-box">
+      <p>${resetURL}</p>
     </div>
     
-    <div style="background-color: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
-      <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px;">
-        <strong>Can't click the button?</strong> Copy and paste this link into your browser:
-      </p>
-      <p style="margin: 0; word-break: break-all; color: #d97706; font-size: 13px; font-family: monospace;">
-        ${resetURL}
-      </p>
-    </div>
-    
-    <p>If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.</p>
-    
-    <p style="margin-top: 30px; color: #4b5563;">
-      Best regards,<br>
-      <strong style="color: #d97706;">The Goldify Team</strong>
-    </p>
+    <p style="font-size: 12px; color: #94A3B8; margin-top: 20px;">If you didn't request this, your password remains secure. No action needed.</p>
   `;
 
-  return baseTemplate(content, "🏆 Goldify - Reset Your Password");
+  return baseTemplate(content, "Goldify - Reset Your Password");
 };
 
 /**
- * Welcome Email Template (after successful verification)
+ * Welcome Email Template
  */
 const welcomeTemplate = (name) => {
   const content = `
-    <h2>Welcome Aboard! 🎉</h2>
-    <p>Hi <strong>${name}</strong>,</p>
-    <p>Congratulations! Your email has been successfully verified and your Goldify account is now active.</p>
+    <h1>Welcome to Goldify</h1>
+    <p>Hello <strong>${name}</strong>,</p>
+    <p>Your email is verified. Your account is now active and ready to use.</p>
     
-    <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 25px; border-radius: 12px; margin: 25px 0; text-align: center;">
-      <h3 style="color: #d97706; margin: 0 0 15px 0; font-size: 20px;">🚀 Ready to Get Started?</h3>
-      <p style="margin: 0; color: #78716c;">
-        Explore all the amazing features Goldify has to offer!
-      </p>
-    </div>
+    <div class="divider"></div>
     
-    <div style="margin: 30px 0;">
-      <h3 style="color: #d97706; font-size: 18px; margin-bottom: 15px;">What's Next?</h3>
-      <ul style="list-style: none; padding: 0; margin: 0;">
-        <li style="padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
-          <strong style="color: #d97706;">✓</strong> Complete your profile
-        </li>
-        <li style="padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
-          <strong style="color: #d97706;">✓</strong> Set up your shop preferences
-        </li>
-        <li style="padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
-          <strong style="color: #d97706;">✓</strong> Explore our features
-        </li>
-        <li style="padding: 12px 0;">
-          <strong style="color: #d97706;">✓</strong> Start your journey with Goldify
-        </li>
-      </ul>
-    </div>
+    <p style="font-size: 13px; font-weight: 600; color: #0F172A; margin: 16px 0 12px;">Quick Start Guide</p>
+    <ul class="checklist">
+      <li>Complete your profile settings</li>
+      <li>Configure your preferences</li>
+      <li>Explore available features</li>
+      <li>Begin using Goldify</li>
+    </ul>
     
-    <p>If you have any questions or need assistance, our support team is always here to help!</p>
+    <a href="https://goldify.pro/features" class="button">Explore Features</a>
     
-    <p style="margin-top: 30px; color: #4b5563;">
-      Best regards,<br>
-      <strong style="color: #d97706;">The Goldify Team</strong>
-    </p>
+    <p style="font-size: 12px; color: #94A3B8; margin-top: 20px;">Need assistance? Our support team is available to help.</p>
   `;
 
-  return baseTemplate(content, "🏆 Goldify - Welcome!");
+  return baseTemplate(content, "Goldify - Welcome");
 };
 
 /**
@@ -262,35 +362,57 @@ const welcomeTemplate = (name) => {
  */
 const passwordChangedTemplate = (name) => {
   const content = `
-    <h2>Password Successfully Changed ✅</h2>
-    <p>Hi <strong>${name}</strong>,</p>
-    <p>This email confirms that your password has been successfully changed.</p>
+    <h1>Password Updated</h1>
+    <p>Hello <strong>${name}</strong>,</p>
+    <p>Your password was successfully changed on ${new Date().toLocaleString(
+      "en-US",
+      {
+        dateStyle: "medium",
+        timeStyle: "short",
+      },
+    )}.</p>
     
-    <div style="background-color: #f0fdf4; border-left: 4px solid #10b981; padding: 15px; border-radius: 8px; margin: 25px 0;">
-      <p style="margin: 0; color: #065f46; font-size: 14px;">
-        <strong>✓ Confirmed:</strong> Your password was updated on ${new Date().toLocaleString()}.
-      </p>
+    <div class="info-box">
+      <p><strong>Didn't make this change?</strong> Contact support immediately at <a href="https://goldify.pro/contact" style="color: #78350F; font-weight: 600;">goldify.pro/contact</a></p>
     </div>
     
-    <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 15px; border-radius: 8px; margin: 25px 0;">
-      <p style="margin: 0 0 10px 0; color: #991b1b; font-size: 14px;">
-        <strong>⚠️ Didn't make this change?</strong>
-      </p>
-      <p style="margin: 0; color: #991b1b; font-size: 14px;">
-        If you didn't change your password, please contact our support team immediately at 
-        <a href="mailto:${emailConfig.from.email}" style="color: #ef4444; font-weight: 600;">${emailConfig.from.email}</a>
-      </p>
+    <p style="font-size: 12px; color: #94A3B8; margin-top: 20px;">You may need to sign in again on all devices for security.</p>
+  `;
+
+  return baseTemplate(content, "Goldify - Password Changed");
+};
+
+/**
+ * Newsletter Welcome Email Template
+ */
+const newsletterWelcomeTemplate = (email) => {
+  const content = `
+    <h1>Newsletter Subscription Confirmed</h1>
+    <p>Welcome to Goldify's newsletter community.</p>
+    <p style="margin-bottom: 16px;">You'll receive:</p>
+    
+    <ul class="checklist">
+      <li>Gold market updates and price trends</li>
+      <li>New feature releases and improvements</li>
+      <li>Expert insights for gold businesses</li>
+      <li>Exclusive offers and early access</li>
+    </ul>
+    
+    <div class="highlight-box">
+      <p><strong>Tip:</strong> Add our email to your contacts for consistent delivery.</p>
     </div>
     
-    <p>For security reasons, you may need to log in again on all your devices.</p>
+    <a href="https://goldify.pro/features" class="button">Explore Goldify</a>
     
-    <p style="margin-top: 30px; color: #4b5563;">
-      Best regards,<br>
-      <strong style="color: #d97706;">The Goldify Team</strong>
+    <div class="divider"></div>
+    
+    <p style="font-size: 11px; color: #94A3B8;">
+      Subscribed with <strong>${email}</strong>. 
+      <a href="https://goldify.pro/newsletter/unsubscribe" style="color: #64748B; text-decoration: underline;">Unsubscribe</a> anytime.
     </p>
   `;
 
-  return baseTemplate(content, "🏆 Goldify - Password Changed");
+  return baseTemplate(content, "Goldify - Newsletter Subscription");
 };
 
 module.exports = {
@@ -298,4 +420,5 @@ module.exports = {
   passwordResetTemplate,
   welcomeTemplate,
   passwordChangedTemplate,
+  newsletterWelcomeTemplate,
 };

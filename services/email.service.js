@@ -1,5 +1,3 @@
-//services/email.service.js
-
 /**
  * Email Service
  * Main service for handling all email operations
@@ -108,6 +106,30 @@ class EmailService {
     } catch (error) {
       console.error("Failed to send password changed email:", error);
       // Don't throw error for confirmation emails as they're not critical
+      return { success: false };
+    }
+  }
+
+  /**
+   * Send newsletter welcome email
+   * @param {string} email - Recipient email
+   * @returns {Promise}
+   */
+  async sendNewsletterWelcomeEmail(email) {
+    try {
+      const mailOptions = {
+        from: `"${emailConfig.from.name}" <${emailConfig.from.email}>`,
+        to: email,
+        subject: "Welcome to Goldify Newsletter! 🎉",
+        html: emailTemplates.newsletterWelcomeTemplate(email),
+      };
+
+      await emailTransporter.sendEmail(mailOptions);
+      console.log(`📧 Newsletter welcome email sent to: ${email}`);
+      return { success: true };
+    } catch (error) {
+      console.error("Failed to send newsletter welcome email:", error);
+      // Don't throw error for newsletter emails as they're not critical
       return { success: false };
     }
   }

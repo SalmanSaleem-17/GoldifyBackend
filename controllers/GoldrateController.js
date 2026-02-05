@@ -460,7 +460,7 @@ exports.startAutoUpdate = () => {
       .catch((err) => {
         console.error("Real-time rate update failed:", err);
       });
-  }, 3000); // 3 seconds
+  }, 15000);
 
   // Save to database every 6 minutes
   dbSaveInterval = setInterval(() => {
