@@ -26,6 +26,7 @@ app.use("/api/shop-records", require("./routes/ShopRecordRoutes"));
 app.use("/api/custom-gold-rate", require("./routes/CustomGoldRateRoutes"));
 app.use("/api/contacts", require("./routes/ContactRoutes"));
 app.use("/api/jewelry-sales", require("./routes/JewelrySaleRoutes"));
+app.use("/api/newsletter", require("./routes/NewsletterRoutes"));
 
 // Health check route
 app.get("/", (req, res) => {
