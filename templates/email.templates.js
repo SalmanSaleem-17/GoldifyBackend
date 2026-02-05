@@ -1,3 +1,5 @@
+//templates/email.templates.js
+
 /**
  * Email Templates
  * Professional HTML email templates for various purposes

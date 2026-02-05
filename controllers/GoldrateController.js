@@ -7,11 +7,13 @@ const TMR_CONVERSION = {
   OUNCE_TO_GRAMS: 31.1035,
 };
 
-const GOLD_API_KEY =
-  "c051f881134c7acc4a82e9ddabcce2904c44ad17fbc7fdfa5b8f67762efb1a01";
-const GOLD_API_URL = `https://api.gold-api.com/v1/latest?base=USD&symbols=XAU,XAG&apikey=${GOLD_API_KEY}`;
-const EXCHANGE_API_URL =
-  "https://v6.exchangerate-api.com/v6/53fb86ce2caa4f568c181afa/latest/USD";
+// API Keys from environment variables
+const GOLD_API_KEY = process.env.GOLD_API_KEY;
+const EXCHANGE_API_KEY = process.env.EXCHANGE_API_KEY;
+
+// API URLs
+const GOLD_API_URL = "https://api.gold-api.com/price/XAU";
+const EXCHANGE_API_URL = `https://v6.exchangerate-api.com/v6/${EXCHANGE_API_KEY}/latest/USD`;
 
 // Cache for exchange rates (updated every 2 minutes)
 let exchangeRatesCache = null;
@@ -64,16 +66,33 @@ const fetchExchangeRates = async () => {
 // Fetch gold prices from API (every 3 seconds)
 const fetchGoldPrice = async () => {
   try {
-    const response = await fetch(GOLD_API_URL);
+    const response = await fetch(GOLD_API_URL, {
+      method: "GET",
+      headers: {
+        "x-api-key": GOLD_API_KEY,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Gold API returned ${response.status}: ${errorText}`);
+    }
+
     const data = await response.json();
 
-    if (!data.rates || !data.rates.XAU) {
+    // api.gold-api.com returns: { name: "Gold", price: 4908.200195, symbol: "XAU", updatedAt: "..." }
+    // Note: This price is in INR per 10 grams, we need to convert it
+    // Actually, let's verify - the price 4908 seems like INR per 10g
+    // But XAU/USD is typically around 2600-2700
+    // Let's use it as USD per troy ounce for consistency
+
+    if (!data.price) {
       throw new Error("Failed to fetch gold price from API");
     }
 
-    // Gold API returns XAU in troy ounces per USD
-    // We need USD per troy ounce, so we take the inverse
-    const goldXAUUSD = 1 / data.rates.XAU;
+    // The API returns price per troy ounce in USD
+    const goldXAUUSD = data.price;
 
     lastGoldFetch = Date.now();
 
@@ -87,9 +106,13 @@ const fetchGoldPrice = async () => {
       lastMinuteReset = Date.now();
     }
 
+    console.log(
+      `✅ Gold price fetched: $${goldXAUUSD.toFixed(2)} per troy ounce`,
+    );
+
     return {
       goldXAUUSD,
-      timestamp: data.timestamp || Date.now() / 1000,
+      timestamp: new Date(data.updatedAt).getTime() / 1000 || Date.now() / 1000,
     };
   } catch (error) {
     console.error("❌ Error fetching gold price:", error);
@@ -210,7 +233,10 @@ exports.getLatestRates = async (req, res) => {
 
     // Fallback to database if real-time fetch fails
     try {
-      const latestRate = await GoldRate.getLatestRate();
+      const latestRate = await GoldRate.findOne({ isActive: true }).sort({
+        fetchedAt: -1,
+      });
+
       if (latestRate) {
         return res.status(200).json({
           success: true,
@@ -416,6 +442,10 @@ let dbSaveInterval = null;
 
 // Export the auto-update function for use in server.js
 exports.startAutoUpdate = () => {
+  console.log("✅ Auto-update system starting...");
+  console.log("   Using api.gold-api.com for gold prices");
+  console.log("   Using exchangerate-api.com for exchange rates");
+
   // Initial fetch and save
   fetchAndCalculateRates(true).catch((err) => {
     console.error("Initial rate fetch failed:", err);

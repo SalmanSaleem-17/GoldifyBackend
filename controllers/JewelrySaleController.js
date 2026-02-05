@@ -11,11 +11,8 @@ const createSale = async (req, res) => {
       currentPayment: req.body.advancePayment || 0,
     };
 
-    // Set initial final calculations
+    // Set initial arrears
     if (saleData.calculations) {
-      saleData.calculations.finalCustomerPayment = saleData.currentPayment;
-      saleData.calculations.finalCustomerGoldWeight =
-        saleData.customerGold || 0;
       saleData.calculations.arrears = saleData.calculations.remainingBalance;
     }
 
@@ -287,7 +284,7 @@ const getSalesStatistics = async (req, res) => {
   }
 };
 
-// Add payment to sale (NEW)
+// Add payment to sale
 const addPayment = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -327,7 +324,7 @@ const addPayment = async (req, res) => {
   }
 };
 
-// Add gold return to sale (NEW)
+// Add gold return to sale
 const addGoldReturn = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -367,7 +364,7 @@ const addGoldReturn = async (req, res) => {
   }
 };
 
-// Mark sale as delivered (NEW)
+// Mark sale as delivered
 const markAsDelivered = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -400,7 +397,7 @@ const markAsDelivered = async (req, res) => {
   }
 };
 
-// Get pending payments (NEW)
+// Get pending payments
 const getPendingPayments = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -420,7 +417,7 @@ const getPendingPayments = async (req, res) => {
   }
 };
 
-// Get total arrears (NEW)
+// Get total arrears
 const getTotalArrears = async (req, res) => {
   try {
     const userId = req.user._id;

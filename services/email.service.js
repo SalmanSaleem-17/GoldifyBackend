@@ -1,3 +1,5 @@
+//services/email.service.js
+
 /**
  * Email Service
  * Main service for handling all email operations
