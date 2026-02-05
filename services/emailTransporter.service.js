@@ -1,3 +1,5 @@
+//services/emailTransporter.service.js
+
 /**
  * Email Transporter Service
  * Handles email transport configuration and sending

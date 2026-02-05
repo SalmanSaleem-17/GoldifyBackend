@@ -1,3 +1,4 @@
+//config/email.config.js
 /**
  * Email Configuration
  * Central configuration for email service

@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const auth = require("../middleware/Auth");
+const { protect } = require("../middleware/Auth"); // Adjust path as needed
 const {
   createSale,
   getAllSales,
@@ -15,59 +15,20 @@ const {
   getTotalArrears,
 } = require("../controllers/JewelrySaleController");
 
-// @route   POST /api/jewelry-sales
-// @desc    Create a new jewelry sale
-// @access  Private
-router.post("/", auth, createSale);
+// Apply protect middleware to all routes
+router.use(protect);
 
-// @route   GET /api/jewelry-sales
-// @desc    Get all sales for authenticated user
-// @access  Private
-router.get("/", auth, getAllSales);
+// Sales routes
+router.route("/").get(getAllSales).post(createSale);
 
-// @route   GET /api/jewelry-sales/statistics
-// @desc    Get sales statistics
-// @access  Private
-router.get("/statistics", auth, getSalesStatistics);
+router.get("/statistics", getSalesStatistics);
+router.get("/pending-payments", getPendingPayments);
+router.get("/total-arrears", getTotalArrears);
 
-// @route   GET /api/jewelry-sales/pending-payments
-// @desc    Get all sales with pending payments
-// @access  Private
-router.get("/pending-payments", auth, getPendingPayments);
+router.route("/:id").get(getSaleById).put(updateSale).delete(deleteSale);
 
-// @route   GET /api/jewelry-sales/total-arrears
-// @desc    Get total arrears amount
-// @access  Private
-router.get("/total-arrears", auth, getTotalArrears);
-
-// @route   GET /api/jewelry-sales/:id
-// @desc    Get single sale by ID
-// @access  Private
-router.get("/:id", auth, getSaleById);
-
-// @route   PUT /api/jewelry-sales/:id
-// @desc    Update sale
-// @access  Private
-router.put("/:id", auth, updateSale);
-
-// @route   POST /api/jewelry-sales/:id/payment
-// @desc    Add payment to sale
-// @access  Private
-router.post("/:id/payment", auth, addPayment);
-
-// @route   POST /api/jewelry-sales/:id/gold-return
-// @desc    Add gold return to sale
-// @access  Private
-router.post("/:id/gold-return", auth, addGoldReturn);
-
-// @route   PUT /api/jewelry-sales/:id/deliver
-// @desc    Mark sale as delivered
-// @access  Private
-router.put("/:id/deliver", auth, markAsDelivered);
-
-// @route   DELETE /api/jewelry-sales/:id
-// @desc    Delete sale
-// @access  Private
-router.delete("/:id", auth, deleteSale);
+router.post("/:id/payment", addPayment);
+router.post("/:id/gold-return", addGoldReturn);
+router.patch("/:id/deliver", markAsDelivered);
 
 module.exports = router;

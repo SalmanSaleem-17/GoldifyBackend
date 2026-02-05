@@ -70,8 +70,12 @@ const jewelrySaleSchema = new mongoose.Schema(
       min: 0,
     },
 
-    // Options
-    includeCustomerGoldPrice: {
+    // Options - UPDATED field names to match frontend
+    chargeForAddedGold: {
+      type: Boolean,
+      default: false,
+    },
+    chargeExtraGold: {
       type: Boolean,
       default: false,
     },
@@ -82,7 +86,7 @@ const jewelrySaleSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Calculated Values
+    // Calculated Values - UPDATED to match frontend
     calculations: {
       netGoldWeight: {
         type: Number,
@@ -100,11 +104,15 @@ const jewelrySaleSchema = new mongoose.Schema(
         type: Number,
         required: true,
       },
+      excessGoldWeight: {
+        type: Number,
+        default: 0,
+      },
       goldPrice: {
         type: Number,
         required: true,
       },
-      customerGoldPrice: {
+      extraGoldPrice: {
         type: Number,
         default: 0,
       },
@@ -115,16 +123,6 @@ const jewelrySaleSchema = new mongoose.Schema(
       remainingBalance: {
         type: Number,
         required: true,
-      },
-
-      // Final Calculations (NEW)
-      finalCustomerPayment: {
-        type: Number,
-        default: 0,
-      },
-      finalCustomerGoldWeight: {
-        type: Number,
-        default: 0,
       },
       arrears: {
         type: Number,
@@ -146,7 +144,7 @@ const jewelrySaleSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    // Payment History (NEW)
+    // Payment History
     paymentHistory: [
       {
         amount: {
@@ -169,7 +167,7 @@ const jewelrySaleSchema = new mongoose.Schema(
       },
     ],
 
-    // Gold Return History (NEW)
+    // Gold Return History
     goldReturnHistory: [
       {
         weight: {
@@ -235,7 +233,6 @@ jewelrySaleSchema.methods.addPayment = function (
   });
 
   this.currentPayment = (this.currentPayment || 0) + parseFloat(amount);
-  this.calculations.finalCustomerPayment = this.currentPayment;
   this.calculations.remainingBalance =
     this.calculations.totalPrice - this.currentPayment;
   this.calculations.arrears = this.calculations.remainingBalance;
@@ -261,24 +258,45 @@ jewelrySaleSchema.methods.addGoldReturn = function (weight, note = "") {
   });
 
   this.customerGold = (this.customerGold || 0) + parseFloat(weight);
-  this.calculations.finalCustomerGoldWeight = this.customerGold;
 
-  // Recalculate gold after deduction
-  this.calculations.goldAfterDeduction = Math.max(
-    0,
-    this.calculations.totalGoldWeight - this.customerGold,
-  );
+  // Recalculate based on new customer gold
+  const totalGoldWeight = parseFloat(this.calculations.totalGoldWeight);
+  const newCustomerGold = this.customerGold;
 
-  // Recalculate gold price
-  this.calculations.goldPrice =
-    (this.calculations.goldAfterDeduction / 11.664) * this.goldRate;
+  if (totalGoldWeight > newCustomerGold) {
+    // Jeweler needs to add gold
+    this.calculations.goldAfterDeduction = totalGoldWeight - newCustomerGold;
+    this.calculations.excessGoldWeight = 0;
+
+    // Recalculate gold price if charging for added gold
+    if (this.chargeForAddedGold) {
+      const goldInTolas = this.calculations.goldAfterDeduction / 11.664;
+      this.calculations.goldPrice = goldInTolas * this.goldRate;
+    } else {
+      this.calculations.goldPrice = 0;
+    }
+    this.calculations.extraGoldPrice = 0;
+  } else {
+    // Customer has excess gold
+    this.calculations.goldAfterDeduction = 0;
+    this.calculations.excessGoldWeight = newCustomerGold - totalGoldWeight;
+    this.calculations.goldPrice = 0;
+
+    // Recalculate extra gold price if charging for excess
+    if (this.chargeExtraGold) {
+      const excessInTolas = this.calculations.excessGoldWeight / 11.664;
+      this.calculations.extraGoldPrice = excessInTolas * this.goldRate;
+    } else {
+      this.calculations.extraGoldPrice = 0;
+    }
+  }
 
   // Recalculate total price
   this.calculations.totalPrice =
     this.calculations.goldPrice +
     this.makingCharges +
     this.otherCharges +
-    (this.includeCustomerGoldPrice ? this.calculations.customerGoldPrice : 0);
+    this.calculations.extraGoldPrice;
 
   // Recalculate remaining balance and arrears
   this.calculations.remainingBalance =
