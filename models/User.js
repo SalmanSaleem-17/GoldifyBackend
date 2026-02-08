@@ -8,6 +8,10 @@ const userSchema = new mongoose.Schema(
       required: [true, "Please provide your name"],
       trim: true,
     },
+    profileImage: {
+      type: String,
+      default: "https://www.svgrepo.com/show/5125/avatar.svg",
+    },
     email: {
       type: String,
       required: [true, "Please provide your email"],

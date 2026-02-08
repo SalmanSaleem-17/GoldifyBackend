@@ -21,6 +21,7 @@ app.use(
 
 // Routes
 app.use("/api/auth", require("./routes/AuthRoutes"));
+app.use("/api/profile", require("./routes/ProfileImageRoutes")); // Profile Image Routes
 app.use("/api/gold-rates", require("./routes/GoldRateRoutes"));
 app.use("/api/shop-records", require("./routes/ShopRecordRoutes"));
 app.use("/api/custom-gold-rate", require("./routes/CustomGoldRateRoutes"));
@@ -36,6 +37,31 @@ app.get("/", (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
+
+  // Multer file size error
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(400).json({
+      success: false,
+      message: "File size too large. Maximum size is 5MB.",
+    });
+  }
+
+  // Multer file type error
+  if (err.message === "Only image files are allowed!") {
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+
+  // Cloudinary error
+  if (err.message && err.message.includes("cloudinary")) {
+    return res.status(500).json({
+      success: false,
+      message: "Image upload service error. Please try again.",
+    });
+  }
+
   res.status(500).json({
     success: false,
     message: err.message || "Something went wrong!",
@@ -94,22 +120,6 @@ process.on("SIGINT", async () => {
   }
 });
 
-// Email related files
-const emailService = require("./services/email.service");
-const emailTransporter = require("./services/emailTransporter.service");
-const emailConfig = require("./config/email.config");
-const emailTemplates = require("./templates/email.templates");
-
-module.exports = {
-  // Main service
-  emailService,
-
-  // Individual components (if needed)
-  emailTransporter,
-  emailConfig,
-  emailTemplates,
-};
-
 process.on("SIGTERM", async () => {
   console.log("\n⏹️  SIGTERM received. Shutting down...");
 
@@ -125,6 +135,22 @@ process.on("SIGTERM", async () => {
     process.exit(1);
   }
 });
+
+// Email related files
+const emailService = require("./services/email.service");
+const emailTransporter = require("./services/emailTransporter.service");
+const emailConfig = require("./config/email.config");
+const emailTemplates = require("./templates/email.templates");
+
+module.exports = {
+  // Main service
+  emailService,
+
+  // Individual components (if needed)
+  emailTransporter,
+  emailConfig,
+  emailTemplates,
+};
 
 // DO NOT export multiple things - just export app
 module.exports = app;
