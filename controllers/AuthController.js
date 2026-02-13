@@ -1,4 +1,5 @@
 const User = require("../models/User");
+const Shop = require("../models/Shop");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const emailService = require("../services/email.service");
@@ -15,7 +16,7 @@ const generateToken = (id) => {
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, country, shopName, password } = req.body;
+    const { name, email, country, password } = req.body;
     console.log("Register API Calling");
 
     // Check if user already exists
@@ -44,7 +45,6 @@ exports.register = async (req, res) => {
       name,
       email,
       country,
-      shopName,
       password,
       role: "user",
     });
@@ -130,7 +130,6 @@ exports.verifyOTP = async (req, res) => {
         name: user.name,
         email: user.email,
         country: user.country,
-        shopName: user.shopName,
         role: user.role,
       },
     });
@@ -240,7 +239,6 @@ exports.login = async (req, res) => {
         name: user.name,
         email: user.email,
         country: user.country,
-        shopName: user.shopName,
         role: user.role,
       },
     });
@@ -267,7 +265,6 @@ exports.getMe = async (req, res) => {
         name: user.name,
         email: user.email,
         country: user.country,
-        shopName: user.shopName,
         role: user.role,
         isVerified: user.isVerified,
       },
@@ -370,14 +367,14 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
-// @desc    Update profile
+// @desc    Update user profile WITH SHOP COUNTRY SYNC
 // @route   PUT /api/auth/profile
 // @access  Private
 exports.updateProfile = async (req, res) => {
   try {
-    const { name, country, shopName } = req.body;
+    const { name, country } = req.body;
 
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.id).select("-password");
 
     if (!user) {
       return res.status(404).json({
@@ -386,24 +383,90 @@ exports.updateProfile = async (req, res) => {
       });
     }
 
-    // Update fields
+    let shopChanges = null;
+
+    // Check if country is being changed
+    if (country && country !== user.country) {
+      console.log(`Country changing from ${user.country} to ${country}`);
+
+      // STEP 1: Deactivate ALL current active shops
+      await Shop.updateMany(
+        {
+          userId: req.user.id,
+          isActive: true,
+        },
+        { isActive: false },
+      );
+
+      console.log("All shops deactivated");
+
+      // Get the previously active shop name for the message
+      const previousActiveShop = await Shop.findOne({
+        userId: req.user.id,
+        isActive: false,
+        "location.country": user.country,
+      })
+        .sort({ updatedAt: -1 })
+        .limit(1);
+
+      // STEP 2: Find a shop in the new country
+      const shopInNewCountry = await Shop.findOne({
+        userId: req.user.id,
+        "location.country": country,
+      }).sort({ createdAt: 1 }); // Get the first created shop
+
+      console.log(
+        "Shop in new country:",
+        shopInNewCountry ? shopInNewCountry.shopName : "Not found",
+      );
+
+      if (shopInNewCountry) {
+        // STEP 3: Activate the found shop
+        shopInNewCountry.isActive = true;
+        await shopInNewCountry.save();
+
+        console.log(`Activated shop: ${shopInNewCountry.shopName}`);
+
+        shopChanges = {
+          deactivated: previousActiveShop ? previousActiveShop.shopName : null,
+          activated: shopInNewCountry.shopName,
+          activatedShopId: shopInNewCountry._id.toString(),
+          message: `Active shop changed to "${shopInNewCountry.shopName}" (${country})`,
+        };
+      } else {
+        // No shop found in new country
+        console.log(`No shop found in ${country}`);
+
+        shopChanges = {
+          deactivated: previousActiveShop ? previousActiveShop.shopName : null,
+          activated: null,
+          warning: `No shops found in ${country}. Please create or activate a shop in your new country.`,
+        };
+      }
+    }
+
+    // Update user fields
     if (name) user.name = name;
     if (country) user.country = country;
-    if (shopName) user.shopName = shopName;
 
     await user.save();
 
+    console.log("User profile updated successfully");
+
     res.status(200).json({
       success: true,
-      message: "Profile updated successfully",
+      message: shopChanges
+        ? shopChanges.message || "Profile updated with shop changes"
+        : "Profile updated successfully",
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
         country: user.country,
-        shopName: user.shopName,
         role: user.role,
+        profileImage: user.profileImage,
       },
+      shopChanges,
     });
   } catch (error) {
     console.error("Update profile error:", error);
@@ -519,3 +582,105 @@ exports.deleteUser = async (req, res) => {
     });
   }
 };
+
+// @desc    Change user country
+// @route   PUT /api/auth/change-country
+// @access  Private
+exports.changeCountry = async (req, res) => {
+  try {
+    const { country } = req.body;
+
+    if (!country || !country.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Country is required",
+      });
+    }
+
+    const user = await User.findById(req.user.id).select("-password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // If country hasn't changed, just return success
+    if (user.country === country) {
+      return res.status(200).json({
+        success: true,
+        message: "Country unchanged",
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          country: user.country,
+          role: user.role,
+        },
+      });
+    }
+
+    console.log(`Changing country from ${user.country} to ${country}`);
+
+    // STEP 1: Deactivate ALL shops
+    await Shop.updateMany(
+      {
+        userId: req.user.id,
+        isActive: true,
+      },
+      { isActive: false },
+    );
+
+    // STEP 2: Find and activate shop in new country
+    const shopInNewCountry = await Shop.findOne({
+      userId: req.user.id,
+      "location.country": country,
+    }).sort({ createdAt: 1 });
+
+    let message = "Country updated successfully";
+    let shopChanges = null;
+
+    if (shopInNewCountry) {
+      shopInNewCountry.isActive = true;
+      await shopInNewCountry.save();
+
+      message = `Country updated. Active shop changed to "${shopInNewCountry.shopName}"`;
+      shopChanges = {
+        activated: shopInNewCountry.shopName,
+        activatedShopId: shopInNewCountry._id.toString(),
+      };
+    } else {
+      message = `Country updated. No shops found in ${country}. Please create or activate a shop.`;
+      shopChanges = {
+        activated: null,
+        warning: `No shops found in ${country}. Please create one.`,
+      };
+    }
+
+    // Update user country
+    user.country = country;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        country: user.country,
+        role: user.role,
+      },
+      shopChanges,
+    });
+  } catch (error) {
+    console.error("Change country error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to change country",
+    });
+  }
+};
+
+module.exports = exports;
