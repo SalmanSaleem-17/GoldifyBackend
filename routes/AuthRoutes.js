@@ -12,6 +12,7 @@ const {
   getAllUsers,
   updateUserRole,
   deleteUser,
+  changeCountry,
 } = require("../controllers/AuthController");
 const { protect, adminOnly } = require("../middleware/Auth");
 
@@ -31,5 +32,6 @@ router.put("/profile", protect, updateProfile);
 router.get("/users", protect, adminOnly, getAllUsers);
 router.put("/users/:id/role", protect, adminOnly, updateUserRole);
 router.delete("/users/:id", protect, adminOnly, deleteUser);
+router.put("/change-country", protect, changeCountry);
 
 module.exports = router;

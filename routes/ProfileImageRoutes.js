@@ -6,7 +6,7 @@ const {
   getProfileImage,
 } = require("../controllers/ProfileImageController");
 const { protect } = require("../middleware/Auth");
-const { upload } = require("../config/cloudinary.config");
+const { uploadProfile } = require("../config/cloudinary.config"); // ✅ Changed from 'upload' to 'uploadProfile'
 
 // Protected routes (authenticated users only)
 
@@ -14,7 +14,7 @@ const { upload } = require("../config/cloudinary.config");
 router.post(
   "/upload-image",
   protect,
-  upload.single("profileImage"),
+  uploadProfile.single("profileImage"), // ✅ Changed from 'upload' to 'uploadProfile'
   uploadProfileImage,
 );
 

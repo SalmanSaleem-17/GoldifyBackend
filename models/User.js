@@ -24,11 +24,6 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, "Please provide your country"],
     },
-    shopName: {
-      type: String,
-      required: [true, "Please provide your shop name"],
-      trim: true,
-    },
     password: {
       type: String,
       required: [true, "Please provide a password"],
