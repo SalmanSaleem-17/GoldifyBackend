@@ -367,6 +367,80 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
+// @route   PUT /api/auth/change-password
+// @access  Private
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    // Validate input
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide both current and new password",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 6 characters",
+      });
+    }
+
+    // Find user with password field
+    const user = await User.findById(req.user.id).select("+password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Verify current password
+    const isPasswordCorrect = await user.comparePassword(currentPassword);
+
+    if (!isPasswordCorrect) {
+      return res.status(401).json({
+        success: false,
+        message: "Current password is incorrect",
+      });
+    }
+
+    // Check if new password is same as current
+    const isSamePassword = await user.comparePassword(newPassword);
+    if (isSamePassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be different from current password",
+      });
+    }
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    // Send password changed email (non-blocking)
+    emailService
+      .sendPasswordChangedEmail(user.email, user.name)
+      .catch((err) => {
+        console.error("Password changed email failed:", err);
+      });
+
+    res.status(200).json({
+      success: true,
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    console.error("Change password error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to change password",
+    });
+  }
+};
+
 // @desc    Update user profile WITH SHOP COUNTRY SYNC
 // @route   PUT /api/auth/profile
 // @access  Private
