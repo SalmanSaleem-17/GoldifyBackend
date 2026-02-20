@@ -13,6 +13,7 @@ const {
   updateUserRole,
   deleteUser,
   changeCountry,
+  changePassword,
 } = require("../controllers/AuthController");
 const { protect, adminOnly } = require("../middleware/Auth");
 
@@ -23,6 +24,7 @@ router.post("/resend-otp", resendOTP);
 router.post("/login", login);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password/:resetToken", resetPassword);
+router.put("/change-password", protect, changePassword);
 
 // Protected routes (all authenticated users)
 router.get("/me", protect, getMe);
