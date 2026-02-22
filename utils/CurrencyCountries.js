@@ -1,4 +1,4 @@
-// frontend/src/utils/currencyCountries.js
+// Backend/utils/CurrencyCountries.js
 const CurrencyCountries = [
   { currencySign: "USD", country: "United States", symbol: "$" },
   { currencySign: "AED", country: "United Arab Emirates", symbol: "د.إ" },
