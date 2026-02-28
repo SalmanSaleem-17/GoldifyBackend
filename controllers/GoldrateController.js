@@ -462,16 +462,45 @@ exports.startAutoUpdate = () => {
       });
   }, 10000);
 
-  // Save to database every 6 minutes
+  // Save to database every 15 minutes
   dbSaveInterval = setInterval(() => {
     fetchAndCalculateRates(true).catch((err) => {
       console.error("Database save failed:", err);
     });
-  }, 360000); // 6 minutes
+  }, 900000); // 15 minutes
+
+  // Schedule cleanup at midnight every day
+  const scheduleMidnightCleanup = () => {
+    const now = new Date();
+    const nextMidnight = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1, // tomorrow
+      0, 0, 0, 0,        // 00:00:00.000
+    );
+    const msUntilMidnight = nextMidnight - now;
+
+    setTimeout(() => {
+      cleanupOldRates().catch((err) => {
+        console.error("Midnight cleanup failed:", err);
+      });
+      // Reschedule for the next midnight
+      setInterval(() => {
+        cleanupOldRates().catch((err) => {
+          console.error("Midnight cleanup failed:", err);
+        });
+      }, 86400000); // every 24 hours from first midnight
+    }, msUntilMidnight);
+
+    console.log(
+      `   - Old record cleanup: Scheduled at midnight (in ${Math.round(msUntilMidnight / 60000)} min)`,
+    );
+  };
+  scheduleMidnightCleanup();
 
   console.log("✅ Auto-update system started:");
   console.log("   - Real-time fetch: Every 10 seconds");
-  console.log("   - Database save: Every 6 minutes");
+  console.log("   - Database save: Every 15 minutes");
   console.log("   - Exchange rates: Every 2 minutes");
 
   // Return cleanup function
@@ -481,5 +510,17 @@ exports.startAutoUpdate = () => {
     console.log("🛑 Auto-update system stopped");
   };
 };
+
+// ── Cleanup old GoldRate records (keep last 7 days) ───────────────────────────
+const cleanupOldRates = async () => {
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const result = await GoldRate.deleteMany({ fetchedAt: { $lt: cutoff } });
+  console.log(
+    `🧹 Cleanup: removed ${result.deletedCount} records older than 7 days`,
+  );
+  return result.deletedCount;
+};
+
+exports.cleanupOldRates = cleanupOldRates;
 
 module.exports.fetchAndCalculateRates = fetchAndCalculateRates;

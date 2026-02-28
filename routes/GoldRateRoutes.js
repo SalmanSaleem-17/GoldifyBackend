@@ -6,8 +6,9 @@ const {
   getAvailableCountries,
   refreshRates,
   getRateHistory,
+  cleanupOldRates,
 } = require("../controllers/GoldrateController");
-const { protect, authorize } = require("../middleware/Auth");
+const { protect, adminOnly } = require("../middleware/Auth");
 
 // Public routes
 router.get("/latest", getLatestRates);
@@ -17,5 +18,17 @@ router.get("/history", getRateHistory);
 
 // Protected routes (Admin only)
 router.post("/refresh", refreshRates);
+router.delete("/cleanup", protect, adminOnly, async (req, res) => {
+  try {
+    const deletedCount = await cleanupOldRates();
+    res.json({
+      success: true,
+      message: `Removed ${deletedCount} records older than 7 days`,
+      deletedCount,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 module.exports = router;
