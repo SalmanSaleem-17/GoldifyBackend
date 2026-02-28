@@ -1,17 +1,140 @@
+const mongoose = require("mongoose");
 const ShopRecord = require("../models/ShopRecord");
+const Shop = require("../models/Shop");
 
-// @desc    Get today's shop record
-// @route   GET /api/shop-records/today
+// ── Helper: verify shop belongs to requesting user ────────────────────────────
+const getVerifiedShop = async (shopId, userId) => {
+  if (!shopId) return null;
+  return await Shop.findOne({ _id: shopId, userId, isActive: true });
+};
+
+// ── Helper: extract shopId from request (query, body, or params) ─────────────
+const resolveShopId = (req) =>
+  req.query.shopId || req.body.shopId || req.params.shopId || null;
+
+// ── Helper: today's date as YYYY-MM-DD string ─────────────────────────────────
+const getTodayDateString = () => new Date().toISOString().split("T")[0];
+
+// ── Helper: cumulative balance for a shop (all-time add − subtract) ───────────
+const getCumulativeBalance = async (shopObjectId) => {
+  const result = await ShopRecord.aggregate([
+    { $match: { shopId: shopObjectId, isActive: true } },
+    {
+      $group: {
+        _id: null,
+        totalAdd: {
+          $sum: { $cond: [{ $eq: ["$type", "add"] }, "$weight", 0] },
+        },
+        totalSubtract: {
+          $sum: { $cond: [{ $eq: ["$type", "subtract"] }, "$weight", 0] },
+        },
+      },
+    },
+  ]);
+
+  if (!result.length) return 0;
+  return parseFloat((result[0].totalAdd - result[0].totalSubtract).toFixed(3));
+};
+
+// ── Helper: build today's summary object ─────────────────────────────────────
+// balance = cumulative all-time balance (= available gold for selling)
+const buildTodayRecord = async (shopId) => {
+  const shopObjectId = new mongoose.Types.ObjectId(shopId);
+  const dateString = getTodayDateString();
+
+  const [transactions, balance] = await Promise.all([
+    ShopRecord.find({ shopId: shopObjectId, dateString, isActive: true }).sort({
+      timestamp: 1,
+    }),
+    getCumulativeBalance(shopObjectId),
+  ]);
+
+  let addTotal = 0;
+  let subtractTotal = 0;
+  let totalSalesAmount = 0;
+
+  for (const t of transactions) {
+    if (t.type === "add") {
+      addTotal += t.weight;
+    } else {
+      subtractTotal += t.weight;
+      if (t.saleDetails?.totalPrice) totalSalesAmount += t.saleDetails.totalPrice;
+    }
+  }
+
+  return {
+    addTotal: parseFloat(addTotal.toFixed(3)),
+    subtractTotal: parseFloat(subtractTotal.toFixed(3)),
+    balance, // cumulative all-time (what the frontend uses for sell checks)
+    totalSalesAmount: parseFloat(totalSalesAmount.toFixed(2)),
+    totalTransactions: transactions.length,
+    dateString,
+    transactions,
+  };
+};
+
+// ── Helper: aggregate daily summaries for a shop over a date range ────────────
+// Returns array of { dateString, addTotal, subtractTotal, balance, totalSalesAmount, totalTransactions }
+const aggregateDailyRecords = async (shopObjectId, startDate, endDate) => {
+  return await ShopRecord.aggregate([
+    {
+      $match: {
+        shopId: shopObjectId,
+        isActive: true,
+        dateString: { $gte: startDate, $lte: endDate },
+      },
+    },
+    {
+      $group: {
+        _id: "$dateString",
+        addTotal: {
+          $sum: { $cond: [{ $eq: ["$type", "add"] }, "$weight", 0] },
+        },
+        subtractTotal: {
+          $sum: { $cond: [{ $eq: ["$type", "subtract"] }, "$weight", 0] },
+        },
+        totalSalesAmount: { $sum: { $ifNull: ["$saleDetails.totalPrice", 0] } },
+        totalTransactions: { $sum: 1 },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        dateString: "$_id",
+        addTotal: { $round: ["$addTotal", 3] },
+        subtractTotal: { $round: ["$subtractTotal", 3] },
+        balance: { $round: [{ $subtract: ["$addTotal", "$subtractTotal"] }, 3] },
+        totalSalesAmount: { $round: ["$totalSalesAmount", 2] },
+        totalTransactions: 1,
+      },
+    },
+    { $sort: { dateString: -1 } },
+  ]);
+};
+
+// @desc    Get today's shop summary (with cumulative balance)
+// @route   GET /api/shop-records/today?shopId=<id>
 // @access  Private
 exports.getTodayRecord = async (req, res) => {
   try {
     const userId = req.user.id;
-    const record = await ShopRecord.getTodayRecord(userId);
+    const shopId = resolveShopId(req);
 
-    res.status(200).json({
-      success: true,
-      data: record,
-    });
+    if (!shopId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "shopId is required" });
+    }
+
+    const shop = await getVerifiedShop(shopId, userId);
+    if (!shop) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shop not found or access denied" });
+    }
+
+    const record = await buildTodayRecord(shopId);
+    res.status(200).json({ success: true, data: record });
   } catch (error) {
     console.error("Get today record error:", error);
     res.status(500).json({
@@ -22,15 +145,21 @@ exports.getTodayRecord = async (req, res) => {
   }
 };
 
-// @desc    Get shop record by date
-// @route   GET /api/shop-records/date/:dateString
+// @desc    Get all transactions for a specific date
+// @route   GET /api/shop-records/date/:dateString?shopId=<id>
 // @access  Private
 exports.getRecordByDate = async (req, res) => {
   try {
     const userId = req.user.id;
+    const shopId = resolveShopId(req);
     const { dateString } = req.params;
 
-    // Validate date format (YYYY-MM-DD)
+    if (!shopId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "shopId is required" });
+    }
+
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(dateString)) {
       return res.status(400).json({
@@ -39,18 +168,49 @@ exports.getRecordByDate = async (req, res) => {
       });
     }
 
-    const record = await ShopRecord.getRecordByDate(userId, dateString);
+    const shop = await getVerifiedShop(shopId, userId);
+    if (!shop) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shop not found or access denied" });
+    }
 
-    if (!record) {
-      return res.status(404).json({
-        success: false,
-        message: "No record found for this date",
-      });
+    const transactions = await ShopRecord.find({
+      shopId,
+      dateString,
+      isActive: true,
+    }).sort({ timestamp: 1 });
+
+    if (!transactions.length) {
+      return res
+        .status(404)
+        .json({ success: false, message: "No record found for this date" });
+    }
+
+    let addTotal = 0;
+    let subtractTotal = 0;
+    let totalSalesAmount = 0;
+
+    for (const t of transactions) {
+      if (t.type === "add") {
+        addTotal += t.weight;
+      } else {
+        subtractTotal += t.weight;
+        if (t.saleDetails?.totalPrice) totalSalesAmount += t.saleDetails.totalPrice;
+      }
     }
 
     res.status(200).json({
       success: true,
-      data: record,
+      data: {
+        dateString,
+        addTotal: parseFloat(addTotal.toFixed(3)),
+        subtractTotal: parseFloat(subtractTotal.toFixed(3)),
+        balance: parseFloat((addTotal - subtractTotal).toFixed(3)),
+        totalSalesAmount: parseFloat(totalSalesAmount.toFixed(2)),
+        totalTransactions: transactions.length,
+        transactions,
+      },
     });
   } catch (error) {
     console.error("Get record by date error:", error);
@@ -62,15 +222,20 @@ exports.getRecordByDate = async (req, res) => {
   }
 };
 
-// @desc    Add transaction to today's record
+// @desc    Add a new transaction
 // @route   POST /api/shop-records/transaction
 // @access  Private
 exports.addTransaction = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { type, weight, customerName, notes } = req.body;
+    const { type, weight, customerName, notes, shopId } = req.body;
 
-    // Validation
+    if (!shopId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "shopId is required" });
+    }
+
     if (!type || !["add", "subtract"].includes(type)) {
       return res.status(400).json({
         success: false,
@@ -85,9 +250,16 @@ exports.addTransaction = async (req, res) => {
       });
     }
 
-    // Get user's custom gold rate
+    const shop = await getVerifiedShop(shopId, userId);
+    if (!shop) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shop not found or access denied" });
+    }
+
+    // Get custom gold rate for this specific shop
     const CustomGoldRate = require("../models/CustomGoldRate");
-    const customRate = await CustomGoldRate.getUserRate(userId);
+    const customRate = await CustomGoldRate.getShopRate(userId, shopId);
 
     if (!customRate || customRate.ratePerTola === 0) {
       return res.status(400).json({
@@ -96,24 +268,20 @@ exports.addTransaction = async (req, res) => {
       });
     }
 
-    // Get today's record
-    const record = await ShopRecord.getTodayRecord(userId);
-
-    // For SUBTRACT: Check if enough gold available
+    // For SUBTRACT: check cumulative balance (not just today's)
     if (type === "subtract") {
-      if (record.balance < weight) {
+      const shopObjectId = new mongoose.Types.ObjectId(shopId);
+      const balance = await getCumulativeBalance(shopObjectId);
+      if (balance < weight) {
         return res.status(400).json({
           success: false,
-          message: `Insufficient gold. Available: ${record.balance.toFixed(3)}g`,
+          message: `Insufficient gold. Available: ${balance.toFixed(3)}g`,
         });
       }
     }
 
-    // Calculate price based on weight and rate
-    const pricePerGram = customRate.ratePerGram;
-    const totalPrice = parseFloat((weight * pricePerGram).toFixed(2));
+    const dateString = getTodayDateString();
 
-    // Create rate snapshot
     const rateSnapshot = {
       ratePerTola: customRate.ratePerTola,
       ratePerGram: customRate.ratePerGram,
@@ -122,30 +290,31 @@ exports.addTransaction = async (req, res) => {
       currency: customRate.currency,
     };
 
-    // Add new transaction
-    const newTransaction = {
+    const transactionData = {
+      userId,
+      shopId,
       type,
       weight: parseFloat(parseFloat(weight).toFixed(3)),
-      customGoldRateId: customRate._id,
       rateSnapshot,
       timestamp: new Date(),
+      dateString,
     };
 
-    // Add sale details for subtract transactions
     if (type === "subtract") {
-      newTransaction.saleDetails = {
+      const totalPrice = parseFloat(
+        (weight * customRate.ratePerGram).toFixed(2),
+      );
+      transactionData.saleDetails = {
         totalPrice,
         customerName: customerName || "Walk-in Customer",
         notes: notes || "",
       };
     }
 
-    record.transactions.push(newTransaction);
-    record.calculateTotals();
-    await record.save();
+    const newTransaction = await ShopRecord.create(transactionData);
 
-    // Populate the custom gold rate in response
-    await record.populate("transactions.customGoldRateId");
+    // Build updated today summary
+    const record = await buildTodayRecord(shopId);
 
     res.status(201).json({
       success: true,
@@ -163,32 +332,42 @@ exports.addTransaction = async (req, res) => {
   }
 };
 
-// @desc    Delete transaction from today's record
-// @route   DELETE /api/shop-records/transaction/:transactionId
+// @desc    Delete a specific transaction
+// @route   DELETE /api/shop-records/transaction/:transactionId?shopId=<id>
 // @access  Private
 exports.deleteTransaction = async (req, res) => {
   try {
     const userId = req.user.id;
+    const shopId = resolveShopId(req);
     const { transactionId } = req.params;
 
-    const record = await ShopRecord.getTodayRecord(userId);
-
-    // Find and remove transaction
-    const transactionIndex = record.transactions.findIndex(
-      (t) => t._id.toString() === transactionId,
-    );
-
-    if (transactionIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        message: "Transaction not found",
-      });
+    if (!shopId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "shopId is required" });
     }
 
-    record.transactions.splice(transactionIndex, 1);
-    record.calculateTotals();
-    await record.save();
+    const shop = await getVerifiedShop(shopId, userId);
+    if (!shop) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shop not found or access denied" });
+    }
 
+    const transaction = await ShopRecord.findOne({
+      _id: transactionId,
+      shopId,
+    });
+
+    if (!transaction) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Transaction not found" });
+    }
+
+    await ShopRecord.deleteOne({ _id: transactionId });
+
+    const record = await buildTodayRecord(shopId);
     res.status(200).json({
       success: true,
       message: "Transaction deleted successfully",
@@ -204,18 +383,31 @@ exports.deleteTransaction = async (req, res) => {
   }
 };
 
-// @desc    Clear all transactions from today's record
-// @route   DELETE /api/shop-records/clear
+// @desc    Clear all of today's transactions for a shop
+// @route   DELETE /api/shop-records/clear?shopId=<id>
 // @access  Private
 exports.clearTodayRecord = async (req, res) => {
   try {
     const userId = req.user.id;
-    const record = await ShopRecord.getTodayRecord(userId);
+    const shopId = resolveShopId(req);
 
-    record.transactions = [];
-    record.calculateTotals();
-    await record.save();
+    if (!shopId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "shopId is required" });
+    }
 
+    const shop = await getVerifiedShop(shopId, userId);
+    if (!shop) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shop not found or access denied" });
+    }
+
+    const dateString = getTodayDateString();
+    await ShopRecord.deleteMany({ shopId, dateString });
+
+    const record = await buildTodayRecord(shopId);
     res.status(200).json({
       success: true,
       message: "All transactions cleared successfully",
@@ -231,13 +423,20 @@ exports.clearTodayRecord = async (req, res) => {
   }
 };
 
-// @desc    Get records in date range
-// @route   GET /api/shop-records/range
+// @desc    Get daily summaries in a date range
+// @route   GET /api/shop-records/range?shopId=<id>&startDate=&endDate=
 // @access  Private
 exports.getRecordsInRange = async (req, res) => {
   try {
     const userId = req.user.id;
+    const shopId = resolveShopId(req);
     const { startDate, endDate } = req.query;
+
+    if (!shopId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "shopId is required" });
+    }
 
     if (!startDate || !endDate) {
       return res.status(400).json({
@@ -246,16 +445,18 @@ exports.getRecordsInRange = async (req, res) => {
       });
     }
 
-    const records = await ShopRecord.getRecordsInRange(
-      userId,
-      startDate,
-      endDate,
-    );
+    const shop = await getVerifiedShop(shopId, userId);
+    if (!shop) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shop not found or access denied" });
+    }
 
-    // Calculate totals across all records
+    const shopObjectId = new mongoose.Types.ObjectId(shopId);
+    const records = await aggregateDailyRecords(shopObjectId, startDate, endDate);
+
     const totalAdd = records.reduce((sum, r) => sum + r.addTotal, 0);
     const totalSubtract = records.reduce((sum, r) => sum + r.subtractTotal, 0);
-    const totalBalance = totalAdd - totalSubtract;
 
     res.status(200).json({
       success: true,
@@ -265,7 +466,7 @@ exports.getRecordsInRange = async (req, res) => {
           totalDays: records.length,
           totalAdd: parseFloat(totalAdd.toFixed(3)),
           totalSubtract: parseFloat(totalSubtract.toFixed(3)),
-          totalBalance: parseFloat(totalBalance.toFixed(3)),
+          totalBalance: parseFloat((totalAdd - totalSubtract).toFixed(3)),
         },
       },
     });
@@ -279,33 +480,59 @@ exports.getRecordsInRange = async (req, res) => {
   }
 };
 
-// @desc    Get monthly summary
-// @route   GET /api/shop-records/monthly/:year/:month
+// @desc    Get monthly summary (daily aggregates for a month)
+// @route   GET /api/shop-records/monthly/:year/:month?shopId=<id>
 // @access  Private
 exports.getMonthlySummary = async (req, res) => {
   try {
     const userId = req.user.id;
+    const shopId = resolveShopId(req);
     const { year, month } = req.params;
+
+    if (!shopId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "shopId is required" });
+    }
 
     const yearNum = parseInt(year);
     const monthNum = parseInt(month);
 
     if (isNaN(yearNum) || isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid year or month",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid year or month" });
     }
 
-    const result = await ShopRecord.getMonthlySummary(
-      userId,
-      yearNum,
-      monthNum,
-    );
+    const shop = await getVerifiedShop(shopId, userId);
+    if (!shop) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shop not found or access denied" });
+    }
+
+    const monthStr = String(monthNum).padStart(2, "0");
+    const startDate = `${yearNum}-${monthStr}-01`;
+    // Last day of month
+    const endDate = new Date(yearNum, monthNum, 0).toISOString().split("T")[0];
+
+    const shopObjectId = new mongoose.Types.ObjectId(shopId);
+    const records = await aggregateDailyRecords(shopObjectId, startDate, endDate);
+
+    const totalAdd = records.reduce((sum, r) => sum + r.addTotal, 0);
+    const totalSubtract = records.reduce((sum, r) => sum + r.subtractTotal, 0);
 
     res.status(200).json({
       success: true,
-      data: result,
+      data: {
+        records,
+        summary: {
+          totalDays: records.length,
+          totalAdd: parseFloat(totalAdd.toFixed(3)),
+          totalSubtract: parseFloat(totalSubtract.toFixed(3)),
+          totalBalance: parseFloat((totalAdd - totalSubtract).toFixed(3)),
+        },
+      },
     });
   } catch (error) {
     console.error("Get monthly summary error:", error);
@@ -317,25 +544,65 @@ exports.getMonthlySummary = async (req, res) => {
   }
 };
 
-// @desc    Get recent records (last 7 days)
-// @route   GET /api/shop-records/recent
+// @desc    Get recent days (aggregated daily summaries)
+// @route   GET /api/shop-records/recent?shopId=<id>&limit=<n>
 // @access  Private
 exports.getRecentRecords = async (req, res) => {
   try {
     const userId = req.user.id;
+    const shopId = resolveShopId(req);
     const limit = parseInt(req.query.limit) || 7;
 
-    const records = await ShopRecord.find({
-      userId,
-      isActive: true,
-    })
-      .sort({ date: -1 })
-      .limit(limit);
+    if (!shopId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "shopId is required" });
+    }
 
-    res.status(200).json({
-      success: true,
-      data: records,
-    });
+    const shop = await getVerifiedShop(shopId, userId);
+    if (!shop) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shop not found or access denied" });
+    }
+
+    const shopObjectId = new mongoose.Types.ObjectId(shopId);
+
+    const records = await ShopRecord.aggregate([
+      { $match: { shopId: shopObjectId, isActive: true } },
+      {
+        $group: {
+          _id: "$dateString",
+          addTotal: {
+            $sum: { $cond: [{ $eq: ["$type", "add"] }, "$weight", 0] },
+          },
+          subtractTotal: {
+            $sum: { $cond: [{ $eq: ["$type", "subtract"] }, "$weight", 0] },
+          },
+          totalSalesAmount: {
+            $sum: { $ifNull: ["$saleDetails.totalPrice", 0] },
+          },
+          totalTransactions: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          dateString: "$_id",
+          addTotal: { $round: ["$addTotal", 3] },
+          subtractTotal: { $round: ["$subtractTotal", 3] },
+          balance: {
+            $round: [{ $subtract: ["$addTotal", "$subtractTotal"] }, 3],
+          },
+          totalSalesAmount: { $round: ["$totalSalesAmount", 2] },
+          totalTransactions: 1,
+        },
+      },
+      { $sort: { dateString: -1 } },
+      { $limit: limit },
+    ]);
+
+    res.status(200).json({ success: true, data: records });
   } catch (error) {
     console.error("Get recent records error:", error);
     res.status(500).json({
@@ -346,52 +613,138 @@ exports.getRecentRecords = async (req, res) => {
   }
 };
 
-// @desc    Get statistics summary
-// @route   GET /api/shop-records/statistics
+// @desc    Get statistics summary (today, current month, all-time)
+// @route   GET /api/shop-records/statistics?shopId=<id>
 // @access  Private
 exports.getStatistics = async (req, res) => {
   try {
     const userId = req.user.id;
+    const shopId = resolveShopId(req);
 
-    // Get current month data
+    if (!shopId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "shopId is required" });
+    }
+
+    const shop = await getVerifiedShop(shopId, userId);
+    if (!shop) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shop not found or access denied" });
+    }
+
+    const shopObjectId = new mongoose.Types.ObjectId(shopId);
     const now = new Date();
-    const currentMonth = await ShopRecord.getMonthlySummary(
-      userId,
-      now.getFullYear(),
-      now.getMonth() + 1,
+    const todayDateString = getTodayDateString();
+    const monthStr = String(now.getMonth() + 1).padStart(2, "0");
+    const monthStart = `${now.getFullYear()}-${monthStr}-01`;
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      .toISOString()
+      .split("T")[0];
+
+    // Run all aggregations in parallel
+    const [allTimeAgg, todayAgg, monthAgg] = await Promise.all([
+      // All-time
+      ShopRecord.aggregate([
+        { $match: { shopId: shopObjectId, isActive: true } },
+        {
+          $group: {
+            _id: null,
+            totalAdd: {
+              $sum: { $cond: [{ $eq: ["$type", "add"] }, "$weight", 0] },
+            },
+            totalSubtract: {
+              $sum: { $cond: [{ $eq: ["$type", "subtract"] }, "$weight", 0] },
+            },
+            distinctDays: { $addToSet: "$dateString" },
+          },
+        },
+      ]),
+      // Today
+      ShopRecord.aggregate([
+        {
+          $match: {
+            shopId: shopObjectId,
+            isActive: true,
+            dateString: todayDateString,
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            addTotal: {
+              $sum: { $cond: [{ $eq: ["$type", "add"] }, "$weight", 0] },
+            },
+            subtractTotal: {
+              $sum: { $cond: [{ $eq: ["$type", "subtract"] }, "$weight", 0] },
+            },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      // Current month
+      ShopRecord.aggregate([
+        {
+          $match: {
+            shopId: shopObjectId,
+            isActive: true,
+            dateString: { $gte: monthStart, $lte: monthEnd },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalAdd: {
+              $sum: { $cond: [{ $eq: ["$type", "add"] }, "$weight", 0] },
+            },
+            totalSubtract: {
+              $sum: { $cond: [{ $eq: ["$type", "subtract"] }, "$weight", 0] },
+            },
+            distinctDays: { $addToSet: "$dateString" },
+          },
+        },
+      ]),
+    ]);
+
+    const allTime = allTimeAgg[0] || {
+      totalAdd: 0,
+      totalSubtract: 0,
+      distinctDays: [],
+    };
+    const today = todayAgg[0] || { addTotal: 0, subtractTotal: 0, count: 0 };
+    const month = monthAgg[0] || {
+      totalAdd: 0,
+      totalSubtract: 0,
+      distinctDays: [],
+    };
+
+    const cumulativeBalance = parseFloat(
+      (allTime.totalAdd - allTime.totalSubtract).toFixed(3),
     );
-
-    // Get all-time statistics
-    const allRecords = await ShopRecord.find({
-      userId,
-      isActive: true,
-    });
-
-    const allTimeAdd = allRecords.reduce((sum, r) => sum + r.addTotal, 0);
-    const allTimeSubtract = allRecords.reduce(
-      (sum, r) => sum + r.subtractTotal,
-      0,
-    );
-    const allTimeBalance = allTimeAdd - allTimeSubtract;
-
-    // Get today's record
-    const todayRecord = await ShopRecord.getTodayRecord(userId);
 
     res.status(200).json({
       success: true,
       data: {
         today: {
-          addTotal: todayRecord.addTotal,
-          subtractTotal: todayRecord.subtractTotal,
-          balance: todayRecord.balance,
-          transactionCount: todayRecord.transactions.length,
+          addTotal: parseFloat((today.addTotal || 0).toFixed(3)),
+          subtractTotal: parseFloat((today.subtractTotal || 0).toFixed(3)),
+          balance: cumulativeBalance, // current available gold
+          transactionCount: today.count || 0,
         },
-        currentMonth: currentMonth.summary,
+        currentMonth: {
+          totalDays: month.distinctDays?.length || 0,
+          totalAdd: parseFloat((month.totalAdd || 0).toFixed(3)),
+          totalSubtract: parseFloat((month.totalSubtract || 0).toFixed(3)),
+          totalBalance: parseFloat(
+            ((month.totalAdd || 0) - (month.totalSubtract || 0)).toFixed(3),
+          ),
+        },
         allTime: {
-          totalDays: allRecords.length,
-          totalAdd: parseFloat(allTimeAdd.toFixed(3)),
-          totalSubtract: parseFloat(allTimeSubtract.toFixed(3)),
-          totalBalance: parseFloat(allTimeBalance.toFixed(3)),
+          totalDays: allTime.distinctDays?.length || 0,
+          totalAdd: parseFloat((allTime.totalAdd || 0).toFixed(3)),
+          totalSubtract: parseFloat((allTime.totalSubtract || 0).toFixed(3)),
+          totalBalance: cumulativeBalance,
         },
       },
     });
@@ -405,28 +758,37 @@ exports.getStatistics = async (req, res) => {
   }
 };
 
-// @desc    Update transaction (edit weight or type)
+// @desc    Update a transaction (weight or type)
 // @route   PUT /api/shop-records/transaction/:transactionId
 // @access  Private
 exports.updateTransaction = async (req, res) => {
   try {
     const userId = req.user.id;
+    const shopId = resolveShopId(req);
     const { transactionId } = req.params;
     const { weight, type } = req.body;
 
-    const record = await ShopRecord.getTodayRecord(userId);
-
-    // Find transaction
-    const transaction = record.transactions.id(transactionId);
-
-    if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: "Transaction not found",
-      });
+    if (!shopId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "shopId is required" });
     }
 
-    // Update fields
+    const shop = await getVerifiedShop(shopId, userId);
+    if (!shop) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shop not found or access denied" });
+    }
+
+    const transaction = await ShopRecord.findOne({ _id: transactionId, shopId });
+
+    if (!transaction) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Transaction not found" });
+    }
+
     if (weight !== undefined) {
       if (weight <= 0) {
         return res.status(400).json({
@@ -439,17 +801,16 @@ exports.updateTransaction = async (req, res) => {
 
     if (type !== undefined) {
       if (!["add", "subtract"].includes(type)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid transaction type",
-        });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid transaction type" });
       }
       transaction.type = type;
     }
 
-    record.calculateTotals();
-    await record.save();
+    await transaction.save();
 
+    const record = await buildTodayRecord(shopId);
     res.status(200).json({
       success: true,
       message: "Transaction updated successfully",
