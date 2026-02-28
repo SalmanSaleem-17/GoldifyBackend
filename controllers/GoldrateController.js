@@ -451,7 +451,7 @@ exports.startAutoUpdate = () => {
     console.error("Initial rate fetch failed:", err);
   });
 
-  // Update real-time cache every 3 seconds (fetch gold price)
+  // Update real-time cache every 10 seconds (fetch gold price)
   goldFetchInterval = setInterval(() => {
     fetchAndCalculateRates(false)
       .then((data) => {
@@ -460,7 +460,7 @@ exports.startAutoUpdate = () => {
       .catch((err) => {
         console.error("Real-time rate update failed:", err);
       });
-  }, 15000);
+  }, 10000);
 
   // Save to database every 6 minutes
   dbSaveInterval = setInterval(() => {
@@ -470,7 +470,7 @@ exports.startAutoUpdate = () => {
   }, 360000); // 6 minutes
 
   console.log("✅ Auto-update system started:");
-  console.log("   - Real-time fetch: Every 3 seconds");
+  console.log("   - Real-time fetch: Every 10 seconds");
   console.log("   - Database save: Every 6 minutes");
   console.log("   - Exchange rates: Every 2 minutes");
 
