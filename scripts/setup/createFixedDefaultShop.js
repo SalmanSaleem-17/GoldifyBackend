@@ -36,23 +36,23 @@ async function createFixedDefaultShop() {
     };
 
     // Check for MongoDB URI
-    if (!process.env.MONGODB_URI) {
-      console.error("❌ MONGODB_URI not found in .env file!");
+    if (!process.env.MONGO_URI) {
+      console.error("❌ MONGO_URI not found in .env file!");
       console.log("\n📝 Please add this to your .env file:");
-      console.log("MONGODB_URI=mongodb://localhost:27017/your-database-name");
+      console.log("MONGO_URI=mongodb://localhost:27017/your-database-name");
       console.log("\nOr for MongoDB Atlas:");
       console.log(
-        "MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/database-name",
+        "MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/database-name",
       );
-      throw new Error("Missing MONGODB_URI environment variable");
+      throw new Error("Missing MONGO_URI environment variable");
     }
 
     console.log(
-      `📍 Connecting to: ${process.env.MONGODB_URI.replace(/\/\/.*@/, "//***@")}`,
+      `📍 Connecting to: ${process.env.MONGO_URI.replace(/\/\/.*@/, "//***@")}`,
     );
 
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI);
+    await mongoose.connect(process.env.MONGO_URI);
     console.log("✅ Connected to database");
 
     // Check if exists
