@@ -33,11 +33,11 @@ const shopLogoStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: "goldify/shop-logos",
-    allowed_formats: ["jpg", "jpeg", "png", "webp", "svg"],
+    allowed_formats: ["png"], // PNG only to preserve transparency
+    format: "png",            // Force PNG output — keeps transparent background
     transformation: [
-      { width: 800, height: 800, crop: "limit" }, // Larger size for shop logos
+      { width: 800, height: 800, crop: "limit" },
       { quality: "auto:best" },
-      { fetch_format: "auto" },
     ],
     public_id: (req, file) => {
       const userId = req.user?.id || "temp";
@@ -77,6 +77,28 @@ const uploadShopLogo = multer({
   },
 });
 
+// Memory storage for shop logos — file stays in memory so we can process it
+// (remove background) before uploading to Cloudinary
+const shopLogoMemoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Only image files are allowed!"), false);
+  },
+});
+
+// Upload a raw Buffer to Cloudinary with the given options
+const uploadBufferToCloudinary = (buffer, options) =>
+  new Promise((resolve, reject) => {
+    cloudinary.uploader
+      .upload_stream(options, (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      })
+      .end(buffer);
+  });
+
 // Delete image from Cloudinary
 const deleteImage = async (imageUrl) => {
   try {
@@ -84,10 +106,17 @@ const deleteImage = async (imageUrl) => {
       return null;
     }
 
-    const parts = imageUrl.split("/");
-    const fileName = parts[parts.length - 1].split(".")[0];
-    const folder = parts[parts.length - 2];
-    const publicId = `${folder}/${fileName}`;
+    // Extract public_id from URL: everything after /upload/, strip version prefix and extension
+    // e.g. https://res.cloudinary.com/CLOUD/image/upload/v1234/goldify/shop-logos/shop_X.png
+    //   → public_id = "goldify/shop-logos/shop_X"
+    const uploadIndex = imageUrl.indexOf("/upload/");
+    if (uploadIndex === -1) return null;
+
+    let publicIdWithExt = imageUrl.substring(uploadIndex + 8);
+    // Strip optional version segment (v1234567/)
+    publicIdWithExt = publicIdWithExt.replace(/^v\d+\//, "");
+    // Strip file extension
+    const publicId = publicIdWithExt.replace(/\.[^/.]+$/, "");
 
     const result = await cloudinary.uploader.destroy(publicId);
     return result;
@@ -160,6 +189,8 @@ module.exports = {
   cloudinary,
   uploadProfile,
   uploadShopLogo,
+  shopLogoMemoryUpload,
+  uploadBufferToCloudinary,
   deleteImage,
   deleteMultipleImages,
   listFolderImages,

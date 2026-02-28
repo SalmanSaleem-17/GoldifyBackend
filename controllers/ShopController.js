@@ -1,11 +1,45 @@
 const Shop = require("../models/Shop");
 const User = require("../models/User");
-const { deleteImage } = require("../config/cloudinary.config");
+const { deleteImage, uploadBufferToCloudinary } = require("../config/cloudinary.config");
+const { removeBackground } = require("@imgly/background-removal-node");
+
+const DEFAULT_LOGO =
+  "https://res.cloudinary.com/demo/image/upload/v1/default-shop-logo.png";
+
+// Shared Cloudinary upload options for shop logos
+const logoUploadOptions = (userId) => ({
+  folder: "goldify/shop-logos",
+  format: "png",
+  resource_type: "image",
+  transformation: [
+    { width: 800, height: 800, crop: "limit" },
+    { quality: "auto:best" },
+  ],
+  public_id: `shop_${userId}_${Date.now()}`,
+});
+
+// Remove background from image buffer then upload to Cloudinary as PNG.
+// Falls back to uploading the original image if bg removal fails.
+const processAndUploadLogo = async (buffer, mimetype, userId) => {
+  const options = logoUploadOptions(userId);
+  try {
+    const inputBlob = new Blob([buffer], { type: mimetype });
+    const pngBlob = await removeBackground(inputBlob);
+    const pngBuffer = Buffer.from(await pngBlob.arrayBuffer());
+    const result = await uploadBufferToCloudinary(pngBuffer, options);
+    return result.secure_url;
+  } catch (bgErr) {
+    console.error("Background removal failed, uploading original:", bgErr.message);
+    const result = await uploadBufferToCloudinary(buffer, options);
+    return result.secure_url;
+  }
+};
 
 // @desc    Create new shop
 // @route   POST /api/shops
 // @access  Private
 exports.createShop = async (req, res) => {
+  let newLogoUrl = null; // track for rollback on DB error
   try {
     // Parse JSON strings from FormData
     let { shopName, contact, location } = req.body;
@@ -72,10 +106,14 @@ exports.createShop = async (req, res) => {
       });
     }
 
-    // Get shop logo from uploaded file or use default
-    const shopLogo = req.file
-      ? req.file.path
-      : "https://res.cloudinary.com/demo/image/upload/v1/default-shop-logo.png";
+    // Upload logo with background removal, or use default
+    if (req.file && req.file.buffer) {
+      newLogoUrl = await processAndUploadLogo(
+        req.file.buffer,
+        req.file.mimetype,
+        req.user.id
+      );
+    }
 
     // Create shop
     const shop = await Shop.create({
@@ -86,7 +124,7 @@ exports.createShop = async (req, res) => {
         number: contact.number,
         fullNumber: contact.fullNumber,
       },
-      shopLogo,
+      shopLogo: newLogoUrl || DEFAULT_LOGO,
       location: {
         country: location.country,
         countryCode: location.countryCode,
@@ -113,12 +151,7 @@ exports.createShop = async (req, res) => {
     });
   } catch (error) {
     console.error("Create shop error:", error);
-
-    // Delete uploaded image if shop creation fails
-    if (req.file && req.file.path) {
-      await deleteImage(req.file.path);
-    }
-
+    if (newLogoUrl) await deleteImage(newLogoUrl);
     res.status(500).json({
       success: false,
       message: error.message || "Failed to create shop",
@@ -216,6 +249,7 @@ exports.getShopById = async (req, res) => {
 // @route   PUT /api/shops/:id
 // @access  Private
 exports.updateShop = async (req, res) => {
+  let newLogoUrl = null; // track for rollback on DB error
   try {
     const { id } = req.params;
     let { shopName, contact, location, isActive } = req.body;
@@ -246,11 +280,6 @@ exports.updateShop = async (req, res) => {
     const shop = await Shop.findById(id);
 
     if (!shop) {
-      // Delete uploaded image if shop not found
-      if (req.file && req.file.path) {
-        await deleteImage(req.file.path);
-      }
-
       return res.status(404).json({
         success: false,
         message: "Shop not found",
@@ -259,36 +288,27 @@ exports.updateShop = async (req, res) => {
 
     // Check if user owns this shop
     if (shop.userId.toString() !== req.user.id) {
-      // Delete uploaded image if not authorized
-      if (req.file && req.file.path) {
-        await deleteImage(req.file.path);
-      }
-
       return res.status(403).json({
         success: false,
         message: "Not authorized to update this shop",
       });
     }
 
-    // Store old logo URL for deletion if being replaced
+    // Store old logo URL for deletion after successful save
     const oldLogoUrl = shop.shopLogo;
 
     // Update fields
     if (shopName) shop.shopName = shopName;
     if (isActive !== undefined) shop.isActive = isActive;
 
-    // Update shop logo if new file uploaded
-    if (req.file && req.file.path) {
-      shop.shopLogo = req.file.path;
-
-      // Delete old logo from Cloudinary if it's not the default
-      if (
-        oldLogoUrl &&
-        oldLogoUrl.includes("cloudinary.com") &&
-        !oldLogoUrl.includes("default-shop-logo")
-      ) {
-        await deleteImage(oldLogoUrl);
-      }
+    // Upload new logo with background removal if provided
+    if (req.file && req.file.buffer) {
+      newLogoUrl = await processAndUploadLogo(
+        req.file.buffer,
+        req.file.mimetype,
+        req.user.id
+      );
+      shop.shopLogo = newLogoUrl;
     }
 
     // Update contact if provided
@@ -313,6 +333,17 @@ exports.updateShop = async (req, res) => {
     }
 
     await shop.save();
+    newLogoUrl = null; // saved successfully — don't rollback
+
+    // Delete old logo from Cloudinary now that save succeeded
+    if (
+      req.file &&
+      oldLogoUrl &&
+      oldLogoUrl.includes("cloudinary.com") &&
+      !oldLogoUrl.includes("default-shop-logo")
+    ) {
+      await deleteImage(oldLogoUrl);
+    }
 
     res.status(200).json({
       success: true,
@@ -329,12 +360,7 @@ exports.updateShop = async (req, res) => {
     });
   } catch (error) {
     console.error("Update shop error:", error);
-
-    // Delete uploaded image if update fails
-    if (req.file && req.file.path) {
-      await deleteImage(req.file.path);
-    }
-
+    if (newLogoUrl) await deleteImage(newLogoUrl);
     res.status(500).json({
       success: false,
       message: error.message || "Failed to update shop",
@@ -394,10 +420,11 @@ exports.deleteShop = async (req, res) => {
 // @route   POST /api/shops/:id/logo
 // @access  Private
 exports.updateShopLogo = async (req, res) => {
+  let newLogoUrl = null; // track for rollback on DB error
   try {
     const { id } = req.params;
 
-    if (!req.file) {
+    if (!req.file || !req.file.buffer) {
       return res.status(400).json({
         success: false,
         message: "Please upload an image file",
@@ -407,9 +434,6 @@ exports.updateShopLogo = async (req, res) => {
     const shop = await Shop.findById(id);
 
     if (!shop) {
-      // Delete uploaded image if shop not found
-      await deleteImage(req.file.path);
-
       return res.status(404).json({
         success: false,
         message: "Shop not found",
@@ -418,9 +442,6 @@ exports.updateShopLogo = async (req, res) => {
 
     // Check if user owns this shop
     if (shop.userId.toString() !== req.user.id) {
-      // Delete uploaded image if not authorized
-      await deleteImage(req.file.path);
-
       return res.status(403).json({
         success: false,
         message: "Not authorized to update this shop",
@@ -430,11 +451,18 @@ exports.updateShopLogo = async (req, res) => {
     // Store old logo URL
     const oldLogoUrl = shop.shopLogo;
 
-    // Update shop logo
-    shop.shopLogo = req.file.path;
-    await shop.save();
+    // Upload new logo with background removal
+    newLogoUrl = await processAndUploadLogo(
+      req.file.buffer,
+      req.file.mimetype,
+      req.user.id
+    );
 
-    // Delete old logo from Cloudinary if it's not the default
+    shop.shopLogo = newLogoUrl;
+    await shop.save();
+    newLogoUrl = null; // saved — don't rollback
+
+    // Delete old logo from Cloudinary after successful save
     if (
       oldLogoUrl &&
       oldLogoUrl.includes("cloudinary.com") &&
@@ -450,12 +478,7 @@ exports.updateShopLogo = async (req, res) => {
     });
   } catch (error) {
     console.error("Update shop logo error:", error);
-
-    // Delete uploaded image if update fails
-    if (req.file && req.file.path) {
-      await deleteImage(req.file.path);
-    }
-
+    if (newLogoUrl) await deleteImage(newLogoUrl);
     res.status(500).json({
       success: false,
       message: "Failed to update shop logo",

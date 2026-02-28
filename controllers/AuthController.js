@@ -267,6 +267,9 @@ exports.getMe = async (req, res) => {
         country: user.country,
         role: user.role,
         isVerified: user.isVerified,
+        authProvider: user.authProvider,
+        isProfileComplete: user.isProfileComplete,
+        profileImage: user.profileImage,
       },
     });
   } catch (error) {
@@ -274,6 +277,80 @@ exports.getMe = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch user",
+    });
+  }
+};
+
+// @desc    Handle Google OAuth callback — issue JWT and redirect to frontend
+// @route   GET /api/auth/google/callback  (called by passport after Google auth)
+// @access  Public
+exports.googleCallback = (req, res) => {
+  try {
+    const user = req.user;
+    const token = generateToken(user._id);
+
+    const params = new URLSearchParams({
+      token,
+      isProfileComplete: String(user.isProfileComplete),
+      role: user.role,
+    });
+
+    res.redirect(
+      `${process.env.FRONTEND_URL}/oauth/callback?${params.toString()}`,
+    );
+  } catch (error) {
+    console.error("Google OAuth callback error:", error);
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
+  }
+};
+
+// @desc    Complete profile for OAuth users (set country)
+// @route   POST /api/auth/complete-profile
+// @access  Private
+exports.completeProfile = async (req, res) => {
+  try {
+    const { country } = req.body;
+
+    if (!country || !country.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Country is required",
+      });
+    }
+
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    user.country = country;
+    user.isProfileComplete = true;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Profile completed successfully",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        country: user.country,
+        role: user.role,
+        isVerified: user.isVerified,
+        authProvider: user.authProvider,
+        isProfileComplete: user.isProfileComplete,
+        profileImage: user.profileImage,
+      },
+    });
+  } catch (error) {
+    console.error("Complete profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to complete profile",
     });
   }
 };

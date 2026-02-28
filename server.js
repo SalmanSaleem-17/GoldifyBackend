@@ -3,8 +3,11 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
 
-// Load env vars
+// Load env vars FIRST — must run before passport reads process.env
 dotenv.config();
+
+const session = require("express-session");
+const passport = require("./config/passport");
 
 const app = express();
 
@@ -18,6 +21,20 @@ app.use(
     credentials: true,
   }),
 );
+
+// Session middleware (used only for OAuth handshake state verification)
+app.use(
+  session({
+    secret: process.env.JWT_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false, maxAge: 5 * 60 * 1000 }, // 5 minutes
+  }),
+);
+
+// Passport middleware
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Routes
 app.use("/api/auth", require("./routes/AuthRoutes"));
