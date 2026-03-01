@@ -36,6 +36,18 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Cache-Control middleware
+// Gold rates are public data — short TTL matching the 15s auto-update interval
+app.use("/api/gold-rates", (req, res, next) => {
+  if (req.method === "GET") res.set("Cache-Control", "public, max-age=15, s-maxage=15");
+  next();
+});
+// All other API routes carry user-specific or auth-protected data — never cache
+app.use("/api", (_req, res, next) => {
+  res.set("Cache-Control", "private, no-cache, no-store");
+  next();
+});
+
 // Routes
 app.use("/api/auth", require("./routes/AuthRoutes"));
 app.use("/api/profile", require("./routes/ProfileImageRoutes")); // Profile Image Routes

@@ -63,7 +63,7 @@ const fetchExchangeRates = async () => {
   }
 };
 
-// Fetch gold prices from API (every 3 seconds)
+// Fetch gold prices from API (every 10 seconds via background interval)
 const fetchGoldPrice = async () => {
   try {
     const response = await fetch(GOLD_API_URL, {
@@ -196,12 +196,9 @@ let realtimeRatesCache = null;
 // @access  Public
 exports.getLatestRates = async (req, res) => {
   try {
-    // Return real-time cache if available and recent (less than 4 seconds old)
-    if (
-      realtimeRatesCache &&
-      lastGoldFetch &&
-      Date.now() - lastGoldFetch < 4000
-    ) {
+    // Background interval is the sole updater — serve from cache whenever it exists.
+    // Only fall through to a live fetch on the very first request (no cache yet).
+    if (realtimeRatesCache) {
       return res.status(200).json({
         success: true,
         data: realtimeRatesCache,
@@ -209,12 +206,12 @@ exports.getLatestRates = async (req, res) => {
         stats: {
           totalFetches: totalFetchCount,
           fetchesThisMinute: fetchCountThisMinute,
-          lastFetch: new Date(lastGoldFetch).toISOString(),
+          lastFetch: lastGoldFetch ? new Date(lastGoldFetch).toISOString() : null,
         },
       });
     }
 
-    // Fetch new real-time data
+    // No cache yet (server just started) — do a one-time fetch to warm it up
     const realtimeData = await fetchAndCalculateRates(false);
     realtimeRatesCache = realtimeData;
 
@@ -225,7 +222,7 @@ exports.getLatestRates = async (req, res) => {
       stats: {
         totalFetches: totalFetchCount,
         fetchesThisMinute: fetchCountThisMinute,
-        lastFetch: new Date(lastGoldFetch).toISOString(),
+        lastFetch: lastGoldFetch ? new Date(lastGoldFetch).toISOString() : null,
       },
     });
   } catch (error) {
