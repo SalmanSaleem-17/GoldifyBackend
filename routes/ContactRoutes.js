@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { protect } = require("../middleware/Auth");
+const { protect, adminOnly } = require("../middleware/Auth");
 const {
   createContact,
   getUserContacts,
@@ -11,15 +11,17 @@ const {
   updateContact,
 } = require("../controllers/ContactController");
 
-// User routes (require authentication)
+// User routes
 router.post("/", protect, createContact);
 router.get("/my-contacts", protect, getUserContacts);
 router.get("/stats", protect, getContactStats);
+
+// Admin routes — must be defined BEFORE /:id to avoid the wildcard catching them
+router.get("/admin/all", protect, adminOnly, getAllContacts);
+router.patch("/admin/:id", protect, adminOnly, updateContact);
+
+// Parameterised user routes — keep these last
 router.get("/:id", protect, getContactById);
 router.delete("/:id", protect, deleteContact);
-
-// Admin routes (add admin middleware if needed)
-// router.get("/admin/all", protect, adminOnly, getAllContacts);
-// router.patch("/admin/:id", protect, adminOnly, updateContact);
 
 module.exports = router;
