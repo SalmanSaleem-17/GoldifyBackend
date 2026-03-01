@@ -347,43 +347,51 @@ exports.refreshRates = async (req, res) => {
 // @access  Public
 exports.getRateHistory = async (req, res) => {
   try {
-    const { limit = 100, currency, period = "24h" } = req.query;
+    const { currency, period = "24h" } = req.query;
 
     let query = {};
     if (currency) {
       query["countryRates.currency"] = currency.toUpperCase();
     }
 
-    // Calculate time range based on period
+    // Calculate time range and appropriate record limit based on period
     let startDate = new Date();
+    let recordLimit;
     switch (period) {
       case "1h":
         startDate.setHours(startDate.getHours() - 1);
+        recordLimit = 120;
         break;
       case "6h":
         startDate.setHours(startDate.getHours() - 6);
+        recordLimit = 300;
         break;
       case "12h":
         startDate.setHours(startDate.getHours() - 12);
+        recordLimit = 500;
         break;
       case "24h":
         startDate.setHours(startDate.getHours() - 24);
+        recordLimit = 500;
         break;
       case "7d":
         startDate.setDate(startDate.getDate() - 7);
+        recordLimit = 5000;
         break;
       case "30d":
         startDate.setDate(startDate.getDate() - 30);
+        recordLimit = 10000;
         break;
       default:
         startDate.setHours(startDate.getHours() - 24);
+        recordLimit = 500;
     }
 
     query.fetchedAt = { $gte: startDate };
 
     const history = await GoldRate.find(query)
       .sort({ fetchedAt: -1 })
-      .limit(parseInt(limit));
+      .limit(recordLimit);
 
     // Format data for charts
     const chartData = history.reverse().map((record) => ({
