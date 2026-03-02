@@ -8,126 +8,68 @@ const jewelrySaleSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    shopId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Shop",
+      index: true,
+    },
 
     // Customer Details
-    customerName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    contactNumber: {
-      type: String,
-      trim: true,
-    },
+    customerName: { type: String, required: true, trim: true },
+    contactNumber: { type: String, trim: true },
 
-    // Gold Weight Details
-    goldWeight: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    stoneWeight: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    polishPerTola: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
+    // Multiple jewelry items (each with optional name, gold weight, stone weight)
+    items: [
+      {
+        name: { type: String, trim: true, default: "" },
+        goldWeight: { type: Number, required: true, min: 0 },
+        stoneWeight: { type: Number, default: 0, min: 0 },
+      },
+    ],
+
+    // Polish per Tola
+    polishPerTola: { type: Number, default: 0, min: 0 },
 
     // Customer Gold (what customer provided)
-    customerGold: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
+    customerGold: { type: Number, default: 0, min: 0 },
+
+    // Charge options
+    chargeForAddedGold: { type: Boolean, default: false },
+    chargeExtraGold: { type: Boolean, default: false },
 
     // Charges
-    makingCharges: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    otherCharges: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
+    makingCharges: { type: Number, default: 0, min: 0 },
 
-    // Payment Details
-    advancePayment: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
+    // Multiple other charges with optional descriptions
+    otherCharges: [
+      {
+        description: { type: String, trim: true, default: "" },
+        amount: { type: Number, required: true, min: 0 },
+      },
+    ],
 
-    // Current Payment (what customer has paid so far including advance)
-    currentPayment: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
+    // Payment
+    advancePayment: { type: Number, default: 0, min: 0 },
+    currentPayment: { type: Number, default: 0, min: 0 },
 
-    // Options - UPDATED field names to match frontend
-    chargeForAddedGold: {
-      type: Boolean,
-      default: false,
-    },
-    chargeExtraGold: {
-      type: Boolean,
-      default: false,
-    },
+    // Gold Rate (per tola)
+    goldRate: { type: Number, required: true },
 
-    // Gold Rate
-    goldRate: {
-      type: Number,
-      required: true,
-    },
-
-    // Calculated Values - UPDATED to match frontend
+    // Calculated Values
     calculations: {
-      netGoldWeight: {
-        type: Number,
-        required: true,
-      },
-      polishWeight: {
-        type: Number,
-        required: true,
-      },
-      totalGoldWeight: {
-        type: Number,
-        required: true,
-      },
-      goldAfterDeduction: {
-        type: Number,
-        required: true,
-      },
-      excessGoldWeight: {
-        type: Number,
-        default: 0,
-      },
-      goldPrice: {
-        type: Number,
-        required: true,
-      },
-      extraGoldPrice: {
-        type: Number,
-        default: 0,
-      },
-      totalPrice: {
-        type: Number,
-        required: true,
-      },
-      remainingBalance: {
-        type: Number,
-        required: true,
-      },
-      arrears: {
-        type: Number,
-        default: 0,
-      },
+      totalGoldWeight: { type: Number, required: true },
+      totalStoneWeight: { type: Number, default: 0 },
+      netGoldWeight: { type: Number, required: true },
+      polishWeight: { type: Number, required: true },
+      totalWithPolish: { type: Number, required: true },
+      goldAfterDeduction: { type: Number, required: true },
+      excessGoldWeight: { type: Number, default: 0 },
+      goldPrice: { type: Number, required: true },
+      extraGoldPrice: { type: Number, default: 0 },
+      totalOtherCharges: { type: Number, default: 0 },
+      totalPrice: { type: Number, required: true },
+      remainingBalance: { type: Number, required: true },
+      arrears: { type: Number, default: 0 },
     },
 
     // Payment Status
@@ -147,198 +89,136 @@ const jewelrySaleSchema = new mongoose.Schema(
     // Payment History
     paymentHistory: [
       {
-        amount: {
-          type: Number,
-          required: true,
-        },
-        date: {
-          type: Date,
-          default: Date.now,
-        },
+        amount: { type: Number, required: true },
+        date: { type: Date, default: Date.now },
         method: {
           type: String,
           enum: ["cash", "card", "bank_transfer", "online", "gold", "other"],
           default: "cash",
         },
-        note: {
-          type: String,
-          trim: true,
-        },
+        note: { type: String, trim: true },
       },
     ],
 
     // Gold Return History
     goldReturnHistory: [
       {
-        weight: {
-          type: Number,
-          required: true,
-        },
-        date: {
-          type: Date,
-          default: Date.now,
-        },
-        note: {
-          type: String,
-          trim: true,
-        },
+        weight: { type: Number, required: true },
+        date: { type: Date, default: Date.now },
+        note: { type: String, trim: true },
       },
     ],
 
     // Notes
-    notes: {
-      type: String,
-      trim: true,
-    },
+    notes: { type: String, trim: true },
 
     // Dates
-    orderDate: {
-      type: Date,
-      default: Date.now,
-    },
-    deliveryDate: {
-      type: Date,
-    },
-    date: {
-      type: Date,
-      default: Date.now,
-    },
+    orderDate: { type: Date, default: Date.now },
+    deliveryDate: { type: Date },
+    date: { type: Date, default: Date.now },
   },
-  {
-    timestamps: true,
-  },
+  { timestamps: true },
 );
 
-// Indexes for better query performance
+// Indexes
 jewelrySaleSchema.index({ userId: 1, date: -1 });
+jewelrySaleSchema.index({ shopId: 1, date: -1 });
 jewelrySaleSchema.index({ customerName: 1 });
 jewelrySaleSchema.index({ paymentStatus: 1 });
 jewelrySaleSchema.index({ deliveryStatus: 1 });
 
-// Virtual for checking if payment is complete
+// Virtual
 jewelrySaleSchema.virtual("isPaymentComplete").get(function () {
   return this.calculations.remainingBalance <= 0;
 });
 
-// Method to add payment
-jewelrySaleSchema.methods.addPayment = function (
-  amount,
-  method = "cash",
-  note = "",
-) {
-  this.paymentHistory.push({
-    amount: parseFloat(amount),
-    method,
-    note,
-  });
-
-  this.currentPayment = (this.currentPayment || 0) + parseFloat(amount);
-  this.calculations.remainingBalance =
-    this.calculations.totalPrice - this.currentPayment;
-  this.calculations.arrears = this.calculations.remainingBalance;
-
-  // Update payment status
-  if (this.calculations.remainingBalance <= 0) {
-    this.paymentStatus =
-      this.calculations.remainingBalance < 0 ? "overpaid" : "paid";
-  } else if (this.currentPayment > 0) {
-    this.paymentStatus = "partial";
+// Internal helper
+function syncPaymentStatus(sale) {
+  const bal = sale.calculations.remainingBalance;
+  if (bal <= 0) {
+    sale.paymentStatus = bal < 0 ? "overpaid" : "paid";
+  } else if (sale.currentPayment > 0) {
+    sale.paymentStatus = "partial";
   } else {
-    this.paymentStatus = "pending";
+    sale.paymentStatus = "pending";
   }
+}
 
+// Add cash payment
+jewelrySaleSchema.methods.addPayment = function (amount, method = "cash", note = "") {
+  this.paymentHistory.push({ amount: parseFloat(amount), method, note });
+  this.currentPayment = (this.currentPayment || 0) + parseFloat(amount);
+  this.calculations.remainingBalance = this.calculations.totalPrice - this.currentPayment;
+  this.calculations.arrears = Math.max(0, this.calculations.remainingBalance);
+  syncPaymentStatus(this);
   return this.save();
 };
 
-// Method to add gold return
-jewelrySaleSchema.methods.addGoldReturn = function (weight, note = "") {
-  this.goldReturnHistory.push({
-    weight: parseFloat(weight),
-    note,
-  });
+// Mark sale as fully paid (settle all arrears)
+jewelrySaleSchema.methods.markAsPaid = function () {
+  const remaining = this.calculations.remainingBalance;
+  if (remaining > 0) {
+    this.paymentHistory.push({ amount: remaining, method: "cash", note: "Marked as fully paid" });
+    this.currentPayment = (this.currentPayment || 0) + remaining;
+  }
+  this.calculations.remainingBalance = 0;
+  this.calculations.arrears = 0;
+  this.paymentStatus = "paid";
+  return this.save();
+};
 
+// Add gold return
+jewelrySaleSchema.methods.addGoldReturn = function (weight, note = "") {
+  this.goldReturnHistory.push({ weight: parseFloat(weight), note });
   this.customerGold = (this.customerGold || 0) + parseFloat(weight);
 
-  // Recalculate based on new customer gold
-  const totalGoldWeight = parseFloat(this.calculations.totalGoldWeight);
+  const totalWithPolish = parseFloat(this.calculations.totalWithPolish || this.calculations.totalGoldWeight);
   const newCustomerGold = this.customerGold;
 
-  if (totalGoldWeight > newCustomerGold) {
-    // Jeweler needs to add gold
-    this.calculations.goldAfterDeduction = totalGoldWeight - newCustomerGold;
+  if (totalWithPolish > newCustomerGold) {
+    this.calculations.goldAfterDeduction = totalWithPolish - newCustomerGold;
     this.calculations.excessGoldWeight = 0;
-
-    // Recalculate gold price if charging for added gold
-    if (this.chargeForAddedGold) {
-      const goldInTolas = this.calculations.goldAfterDeduction / 11.664;
-      this.calculations.goldPrice = goldInTolas * this.goldRate;
-    } else {
-      this.calculations.goldPrice = 0;
-    }
+    this.calculations.goldPrice = this.chargeForAddedGold
+      ? (this.calculations.goldAfterDeduction / 11.664) * this.goldRate
+      : 0;
     this.calculations.extraGoldPrice = 0;
   } else {
-    // Customer has excess gold
     this.calculations.goldAfterDeduction = 0;
-    this.calculations.excessGoldWeight = newCustomerGold - totalGoldWeight;
+    this.calculations.excessGoldWeight = newCustomerGold - totalWithPolish;
     this.calculations.goldPrice = 0;
-
-    // Recalculate extra gold price if charging for excess
-    if (this.chargeExtraGold) {
-      const excessInTolas = this.calculations.excessGoldWeight / 11.664;
-      this.calculations.extraGoldPrice = excessInTolas * this.goldRate;
-    } else {
-      this.calculations.extraGoldPrice = 0;
-    }
+    this.calculations.extraGoldPrice = this.chargeExtraGold
+      ? (this.calculations.excessGoldWeight / 11.664) * this.goldRate
+      : 0;
   }
 
-  // Recalculate total price
   this.calculations.totalPrice =
     this.calculations.goldPrice +
     this.makingCharges +
-    this.otherCharges +
+    (this.calculations.totalOtherCharges || 0) +
     this.calculations.extraGoldPrice;
 
-  // Recalculate remaining balance and arrears
-  this.calculations.remainingBalance =
-    this.calculations.totalPrice - this.currentPayment;
-  this.calculations.arrears = this.calculations.remainingBalance;
-
-  // Update payment status
-  if (this.calculations.remainingBalance <= 0) {
-    this.paymentStatus =
-      this.calculations.remainingBalance < 0 ? "overpaid" : "paid";
-  } else if (this.currentPayment > 0) {
-    this.paymentStatus = "partial";
-  }
-
+  this.calculations.remainingBalance = this.calculations.totalPrice - this.currentPayment;
+  this.calculations.arrears = Math.max(0, this.calculations.remainingBalance);
+  syncPaymentStatus(this);
   return this.save();
 };
 
-// Method to mark as delivered
-jewelrySaleSchema.methods.markAsDelivered = function (
-  deliveryDate = new Date(),
-) {
+// Mark as delivered
+jewelrySaleSchema.methods.markAsDelivered = function (deliveryDate = new Date()) {
   this.deliveryStatus = "delivered";
   this.deliveryDate = deliveryDate;
   return this.save();
 };
 
-// Static method to get pending payments for a user
+// Static: pending payments
 jewelrySaleSchema.statics.getPendingPayments = function (userId) {
-  return this.find({
-    userId,
-    paymentStatus: { $in: ["pending", "partial"] },
-  }).sort({ date: -1 });
+  return this.find({ userId, paymentStatus: { $in: ["pending", "partial"] } }).sort({ date: -1 });
 };
 
-// Static method to get total arrears for a user
+// Static: total arrears
 jewelrySaleSchema.statics.getTotalArrears = async function (userId) {
-  const sales = await this.find({
-    userId,
-    paymentStatus: { $in: ["pending", "partial"] },
-  });
-
-  return sales.reduce((sum, sale) => sum + sale.calculations.arrears, 0);
+  const sales = await this.find({ userId, paymentStatus: { $in: ["pending", "partial"] } });
+  return sales.reduce((sum, sale) => sum + (sale.calculations.arrears || 0), 0);
 };
 
 module.exports = mongoose.model("JewelrySale", jewelrySaleSchema);

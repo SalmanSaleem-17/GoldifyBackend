@@ -4,52 +4,62 @@ const JewelrySale = require("../models/JewelrySale");
 const createSale = async (req, res) => {
   try {
     const userId = req.user._id;
+    const shopId = req.user.shopId || req.body.shopId || undefined;
+
+    const advance = parseFloat(req.body.advancePayment) || 0;
+    const bal = req.body.calculations?.remainingBalance ?? 0;
+
+    let paymentStatus = "pending";
+    if (bal <= 0) paymentStatus = bal < 0 ? "overpaid" : "paid";
+    else if (advance > 0) paymentStatus = "partial";
 
     const saleData = {
       ...req.body,
       userId,
-      currentPayment: req.body.advancePayment || 0,
+      ...(shopId && { shopId }),
+      currentPayment: advance,
+      paymentStatus,
     };
 
-    // Set initial arrears
     if (saleData.calculations) {
-      saleData.calculations.arrears = saleData.calculations.remainingBalance;
+      saleData.calculations.arrears = Math.max(0, bal);
     }
 
-    // Set payment status based on balance
-    if (saleData.calculations && saleData.calculations.remainingBalance <= 0) {
-      saleData.paymentStatus =
-        saleData.calculations.remainingBalance < 0 ? "overpaid" : "paid";
-    } else if (saleData.currentPayment > 0) {
-      saleData.paymentStatus = "partial";
-    } else {
-      saleData.paymentStatus = "pending";
-    }
-
-    // Add initial payment to history if advance payment exists
-    if (saleData.currentPayment > 0) {
+    if (advance > 0) {
       saleData.paymentHistory = [
-        {
-          amount: saleData.currentPayment,
-          method: "cash",
-          note: "Initial advance payment",
-        },
+        { amount: advance, method: "cash", note: "Initial advance payment" },
       ];
     }
 
     const sale = new JewelrySale(saleData);
     await sale.save();
 
-    res.status(201).json({
-      success: true,
-      message: "Sale created successfully",
-      data: sale,
-    });
+    res
+      .status(201)
+      .json({
+        success: true,
+        message: "Sale created successfully",
+        data: sale,
+      });
   } catch (error) {
-    console.error("Error creating sale:", error);
+    console.error("=== SALE CREATE ERROR ===");
+    console.error("Message:", error.message);
+    console.error("Name:", error.name);
+
+    // Print each failing Mongoose validation field
+    if (error.errors) {
+      Object.keys(error.errors).forEach((key) => {
+        console.error(`  Field [${key}]: ${error.errors[key].message}`);
+      });
+    }
+
+    console.error("Body received:", JSON.stringify(req.body, null, 2));
+    console.error("========================");
+
     res.status(500).json({
       success: false,
-      message: "Failed to create sale",
+      message: error.message,
+      fields: error.errors ? Object.keys(error.errors) : [],
       error: error.message,
     });
   }
@@ -69,30 +79,18 @@ const getAllSales = async (req, res) => {
       deliveryStatus,
     } = req.query;
 
-    // Build query
-    const query = { userId };
+    const shopId = req.user.shopId || req.query.shopId;
+    const query = shopId ? { shopId } : { userId };
 
-    // Date filter
     if (startDate || endDate) {
       query.date = {};
       if (startDate) query.date.$gte = new Date(startDate);
       if (endDate) query.date.$lte = new Date(endDate);
     }
-
-    // Customer name filter
-    if (customerName) {
+    if (customerName)
       query.customerName = { $regex: customerName, $options: "i" };
-    }
-
-    // Payment status filter
-    if (paymentStatus) {
-      query.paymentStatus = paymentStatus;
-    }
-
-    // Delivery status filter
-    if (deliveryStatus) {
-      query.deliveryStatus = deliveryStatus;
-    }
+    if (paymentStatus) query.paymentStatus = paymentStatus;
+    if (deliveryStatus) query.deliveryStatus = deliveryStatus;
 
     const sales = await JewelrySale.find(query)
       .sort({ date: -1 })
@@ -111,113 +109,103 @@ const getAllSales = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching sales:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch sales",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to fetch sales",
+        error: error.message,
+      });
   }
 };
 
 // Get single sale by ID
 const getSaleById = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const { id } = req.params;
-
-    const sale = await JewelrySale.findOne({ _id: id, userId });
-
-    if (!sale) {
-      return res.status(404).json({
-        success: false,
-        message: "Sale not found",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: sale,
+    const sale = await JewelrySale.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
     });
+    if (!sale)
+      return res
+        .status(404)
+        .json({ success: false, message: "Sale not found" });
+    res.status(200).json({ success: true, data: sale });
   } catch (error) {
     console.error("Error fetching sale:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch sale",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to fetch sale",
+        error: error.message,
+      });
   }
 };
 
 // Update sale
 const updateSale = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const { id } = req.params;
+    const sale = await JewelrySale.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+    if (!sale)
+      return res
+        .status(404)
+        .json({ success: false, message: "Sale not found" });
 
-    const sale = await JewelrySale.findOne({ _id: id, userId });
-
-    if (!sale) {
-      return res.status(404).json({
-        success: false,
-        message: "Sale not found",
-      });
-    }
-
-    // Update fields
     Object.keys(req.body).forEach((key) => {
       if (
-        key !== "_id" &&
-        key !== "userId" &&
-        key !== "paymentHistory" &&
-        key !== "goldReturnHistory"
+        !["_id", "userId", "paymentHistory", "goldReturnHistory"].includes(key)
       ) {
         sale[key] = req.body[key];
       }
     });
 
     await sale.save();
-
-    res.status(200).json({
-      success: true,
-      message: "Sale updated successfully",
-      data: sale,
-    });
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: "Sale updated successfully",
+        data: sale,
+      });
   } catch (error) {
     console.error("Error updating sale:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update sale",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to update sale",
+        error: error.message,
+      });
   }
 };
 
 // Delete sale
 const deleteSale = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const { id } = req.params;
-
-    const sale = await JewelrySale.findOneAndDelete({ _id: id, userId });
-
-    if (!sale) {
-      return res.status(404).json({
-        success: false,
-        message: "Sale not found",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Sale deleted successfully",
+    const sale = await JewelrySale.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user._id,
     });
+    if (!sale)
+      return res
+        .status(404)
+        .json({ success: false, message: "Sale not found" });
+    res
+      .status(200)
+      .json({ success: true, message: "Sale deleted successfully" });
   } catch (error) {
     console.error("Error deleting sale:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete sale",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to delete sale",
+        error: error.message,
+      });
   }
 };
 
@@ -227,7 +215,6 @@ const getSalesStatistics = async (req, res) => {
     const userId = req.user._id;
     const { startDate, endDate } = req.query;
 
-    // Build query
     const query = { userId };
     if (startDate || endDate) {
       query.date = {};
@@ -237,31 +224,35 @@ const getSalesStatistics = async (req, res) => {
 
     const sales = await JewelrySale.find(query);
 
-    // Calculate statistics
+    const totalGoldWeight = sales.reduce((sum, sale) => {
+      const itemsTotal = (sale.items || []).reduce(
+        (s, it) => s + (it.goldWeight || 0),
+        0,
+      );
+      return sum + itemsTotal;
+    }, 0);
+
     const stats = {
       totalSales: sales.length,
       totalRevenue: sales.reduce(
-        (sum, sale) => sum + sale.calculations.totalPrice,
+        (sum, s) => sum + s.calculations.totalPrice,
         0,
       ),
       totalBalance: sales.reduce(
-        (sum, sale) => sum + sale.calculations.remainingBalance,
+        (sum, s) => sum + s.calculations.remainingBalance,
         0,
       ),
       totalArrears: sales.reduce(
-        (sum, sale) => sum + (sale.calculations.arrears || 0),
+        (sum, s) => sum + (s.calculations.arrears || 0),
         0,
       ),
-      totalAdvance: sales.reduce((sum, sale) => sum + sale.advancePayment, 0),
-      totalPayments: sales.reduce((sum, sale) => sum + sale.currentPayment, 0),
-      totalGoldWeight: sales.reduce((sum, sale) => sum + sale.goldWeight, 0),
-      totalCustomerGold: sales.reduce(
-        (sum, sale) => sum + sale.customerGold,
-        0,
-      ),
+      totalAdvance: sales.reduce((sum, s) => sum + s.advancePayment, 0),
+      totalPayments: sales.reduce((sum, s) => sum + s.currentPayment, 0),
+      totalGoldWeight,
+      totalCustomerGold: sales.reduce((sum, s) => sum + s.customerGold, 0),
       averageSaleValue:
         sales.length > 0
-          ? sales.reduce((sum, sale) => sum + sale.calculations.totalPrice, 0) /
+          ? sales.reduce((sum, s) => sum + s.calculations.totalPrice, 0) /
             sales.length
           : 0,
       pendingSales: sales.filter((s) => s.paymentStatus === "pending").length,
@@ -270,176 +261,189 @@ const getSalesStatistics = async (req, res) => {
       overpaidSales: sales.filter((s) => s.paymentStatus === "overpaid").length,
     };
 
-    res.status(200).json({
-      success: true,
-      data: stats,
-    });
+    res.status(200).json({ success: true, data: stats });
   } catch (error) {
     console.error("Error fetching statistics:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch statistics",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to fetch statistics",
+        error: error.message,
+      });
   }
 };
 
-// Add payment to sale
+// Add payment
 const addPayment = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const { id } = req.params;
     const { amount, method = "cash", note = "" } = req.body;
+    if (!amount || amount <= 0)
+      return res
+        .status(400)
+        .json({ success: false, message: "Valid payment amount required" });
 
-    if (!amount || amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid payment amount is required",
-      });
-    }
-
-    const sale = await JewelrySale.findOne({ _id: id, userId });
-
-    if (!sale) {
-      return res.status(404).json({
-        success: false,
-        message: "Sale not found",
-      });
-    }
+    const sale = await JewelrySale.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+    if (!sale)
+      return res
+        .status(404)
+        .json({ success: false, message: "Sale not found" });
 
     await sale.addPayment(amount, method, note);
-
-    res.status(200).json({
-      success: true,
-      message: "Payment added successfully",
-      data: sale,
-    });
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: "Payment added successfully",
+        data: sale,
+      });
   } catch (error) {
     console.error("Error adding payment:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to add payment",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to add payment",
+        error: error.message,
+      });
   }
 };
 
-// Add gold return to sale
+// Mark sale as fully paid
+const markAsPaid = async (req, res) => {
+  try {
+    const sale = await JewelrySale.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+    if (!sale)
+      return res
+        .status(404)
+        .json({ success: false, message: "Sale not found" });
+
+    await sale.markAsPaid();
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: "Sale marked as fully paid",
+        data: sale,
+      });
+  } catch (error) {
+    console.error("Error marking as paid:", error);
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to mark as paid",
+        error: error.message,
+      });
+  }
+};
+
+// Add gold return
 const addGoldReturn = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const { id } = req.params;
     const { weight, note = "" } = req.body;
+    if (!weight || weight <= 0)
+      return res
+        .status(400)
+        .json({ success: false, message: "Valid gold weight required" });
 
-    if (!weight || weight <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid gold weight is required",
-      });
-    }
-
-    const sale = await JewelrySale.findOne({ _id: id, userId });
-
-    if (!sale) {
-      return res.status(404).json({
-        success: false,
-        message: "Sale not found",
-      });
-    }
+    const sale = await JewelrySale.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+    if (!sale)
+      return res
+        .status(404)
+        .json({ success: false, message: "Sale not found" });
 
     await sale.addGoldReturn(weight, note);
-
-    res.status(200).json({
-      success: true,
-      message: "Gold return added successfully",
-      data: sale,
-    });
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: "Gold return added successfully",
+        data: sale,
+      });
   } catch (error) {
     console.error("Error adding gold return:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to add gold return",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to add gold return",
+        error: error.message,
+      });
   }
 };
 
-// Mark sale as delivered
+// Mark as delivered
 const markAsDelivered = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const { id } = req.params;
-    const { deliveryDate } = req.body;
-
-    const sale = await JewelrySale.findOne({ _id: id, userId });
-
-    if (!sale) {
-      return res.status(404).json({
-        success: false,
-        message: "Sale not found",
-      });
-    }
-
-    await sale.markAsDelivered(deliveryDate);
-
-    res.status(200).json({
-      success: true,
-      message: "Sale marked as delivered",
-      data: sale,
+    const sale = await JewelrySale.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
     });
+    if (!sale)
+      return res
+        .status(404)
+        .json({ success: false, message: "Sale not found" });
+
+    await sale.markAsDelivered(req.body.deliveryDate);
+    res
+      .status(200)
+      .json({ success: true, message: "Sale marked as delivered", data: sale });
   } catch (error) {
     console.error("Error marking as delivered:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to mark as delivered",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to mark as delivered",
+        error: error.message,
+      });
   }
 };
 
 // Get pending payments
 const getPendingPayments = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const sales = await JewelrySale.getPendingPayments(userId);
-
-    res.status(200).json({
-      success: true,
-      data: sales,
-    });
+    const sales = await JewelrySale.getPendingPayments(req.user._id);
+    res.status(200).json({ success: true, data: sales });
   } catch (error) {
     console.error("Error fetching pending payments:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch pending payments",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to fetch pending payments",
+        error: error.message,
+      });
   }
 };
 
 // Get total arrears
 const getTotalArrears = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const totalArrears = await JewelrySale.getTotalArrears(userId);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        totalArrears,
-      },
-    });
+    const totalArrears = await JewelrySale.getTotalArrears(req.user._id);
+    res.status(200).json({ success: true, data: { totalArrears } });
   } catch (error) {
     console.error("Error fetching total arrears:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch total arrears",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to fetch total arrears",
+        error: error.message,
+      });
   }
 };
 
-// Export all functions
 module.exports = {
   createSale,
   getAllSales,
@@ -448,6 +452,7 @@ module.exports = {
   deleteSale,
   getSalesStatistics,
   addPayment,
+  markAsPaid,
   addGoldReturn,
   markAsDelivered,
   getPendingPayments,
