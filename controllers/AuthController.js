@@ -262,6 +262,7 @@ exports.getMe = async (req, res) => {
       success: true,
       user: {
         id: user._id,
+        _id: user._id,
         name: user.name,
         email: user.email,
         country: user.country,
@@ -270,6 +271,7 @@ exports.getMe = async (req, res) => {
         authProvider: user.authProvider,
         isProfileComplete: user.isProfileComplete,
         profileImage: user.profileImage,
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {
