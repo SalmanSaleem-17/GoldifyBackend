@@ -14,11 +14,11 @@ const goldRateSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Exchange rates for all currencies
+    // Exchange rates — no longer saved to DB (reduces document size significantly)
     exchangeRates: {
       type: Map,
       of: Number,
-      required: true,
+      required: false,
     },
 
     // Country-specific rates (calculated from base rate)

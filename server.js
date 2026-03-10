@@ -166,21 +166,4 @@ process.on("SIGTERM", async () => {
   }
 });
 
-// Email related files
-const emailService = require("./services/email.service");
-const emailTransporter = require("./services/emailTransporter.service");
-const emailConfig = require("./config/email.config");
-const emailTemplates = require("./templates/email.templates");
-
-module.exports = {
-  // Main service
-  emailService,
-
-  // Individual components (if needed)
-  emailTransporter,
-  emailConfig,
-  emailTemplates,
-};
-
-// DO NOT export multiple things - just export app
 module.exports = app;

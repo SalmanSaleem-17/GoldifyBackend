@@ -18,9 +18,31 @@ const EXCHANGE_API_URL = `https://v6.exchangerate-api.com/v6/${EXCHANGE_API_KEY}
 // Cache for exchange rates (updated every 2 minutes)
 let exchangeRatesCache = null;
 let lastExchangeUpdate = null;
+let exchangeRatesSource = "api"; // "api" | "db-fallback"
 
 // Last fetch time for gold prices
 let lastGoldFetch = null;
+
+// Load last saved exchange rates from DB to warm up cache on startup
+const warmUpExchangeRatesFromDB = async () => {
+  try {
+    const latest = await GoldRate.findOne({ exchangeRates: { $exists: true, $ne: null } })
+      .sort({ fetchedAt: -1 })
+      .select("exchangeRates fetchedAt")
+      .lean();
+    if (latest && latest.exchangeRates) {
+      // Mongoose stores Map as plain object with .lean()
+      exchangeRatesCache = latest.exchangeRates instanceof Map
+        ? Object.fromEntries(latest.exchangeRates)
+        : latest.exchangeRates;
+      lastExchangeUpdate = new Date(latest.fetchedAt).getTime();
+      exchangeRatesSource = "db-fallback";
+      console.log(`✅ Exchange rates pre-loaded from DB (${latest.fetchedAt})`);
+    }
+  } catch (err) {
+    console.error("⚠️  Could not pre-load exchange rates from DB:", err.message);
+  }
+};
 
 // Counter for per-second fetches
 let totalFetchCount = 0;
@@ -32,11 +54,7 @@ const fetchExchangeRates = async () => {
   try {
     const now = Date.now();
     // Return cached rates if less than 2 minutes old
-    if (
-      exchangeRatesCache &&
-      lastExchangeUpdate &&
-      now - lastExchangeUpdate < 120000
-    ) {
+    if (exchangeRatesCache && lastExchangeUpdate && now - lastExchangeUpdate < 120000) {
       return exchangeRatesCache;
     }
 
@@ -49,16 +67,24 @@ const fetchExchangeRates = async () => {
 
     exchangeRatesCache = data.conversion_rates;
     lastExchangeUpdate = now;
+    exchangeRatesSource = "api";
     console.log(`✅ Exchange rates updated at ${new Date().toISOString()}`);
 
     return exchangeRatesCache;
   } catch (error) {
     console.error("❌ Error fetching exchange rates:", error);
-    // Return cached rates if available, otherwise throw
+
+    // 1. In-memory cache (may be stale but still useful)
     if (exchangeRatesCache) {
-      console.log("⚠️ Using cached exchange rates");
+      console.log("⚠️  Using in-memory cached exchange rates");
       return exchangeRatesCache;
     }
+
+    // 2. Last saved DB record as final fallback
+    console.log("⚠️  Falling back to DB exchange rates...");
+    await warmUpExchangeRatesFromDB();
+    if (exchangeRatesCache) return exchangeRatesCache;
+
     throw error;
   }
 };
@@ -159,7 +185,7 @@ const fetchAndCalculateRates = async (saveToDb = true) => {
       // Deactivate previous rates
       await GoldRate.updateMany({ isActive: true }, { isActive: false });
 
-      // Create new rate document
+      // Create new rate document — saved every hour, so storing exchangeRates is fine
       const newRate = await GoldRate.create({
         goldXAUUSD,
         goldRateUSD,
@@ -203,6 +229,7 @@ exports.getLatestRates = async (req, res) => {
         success: true,
         data: realtimeRatesCache,
         source: "realtime-cache",
+        exchangeRatesSource,
         stats: {
           totalFetches: totalFetchCount,
           fetchesThisMinute: fetchCountThisMinute,
@@ -389,21 +416,16 @@ exports.getRateHistory = async (req, res) => {
 
     query.fetchedAt = { $gte: startDate };
 
-    const history = await GoldRate.find(query)
-      .sort({ fetchedAt: -1 })
-      .limit(recordLimit);
-
-    // Format data for charts
-    const chartData = history.reverse().map((record) => ({
-      timestamp: record.fetchedAt,
-      goldXAUUSD: record.goldXAUUSD,
-      goldRateUSD: record.goldRateUSD,
-    }));
-
-    // If currency specified, add currency-specific data
+    // If currency-specific, fetch only that currency's sub-document
     if (currency) {
-      const currencyData = history.map((record) => {
-        const countryRate = record.countryRates.find(
+      const history = await GoldRate.find(query)
+        .sort({ fetchedAt: -1 })
+        .limit(recordLimit)
+        .select("fetchedAt goldXAUUSD goldRateUSD countryRates")
+        .lean();
+
+      const chartData = history.reverse().map((record) => {
+        const countryRate = record.countryRates?.find(
           (r) => r.currency === currency.toUpperCase(),
         );
         return {
@@ -417,19 +439,30 @@ exports.getRateHistory = async (req, res) => {
 
       return res.status(200).json({
         success: true,
-        count: history.length,
+        count: chartData.length,
         period,
         currency,
-        data: history,
-        chartData: currencyData,
+        chartData,
       });
     }
 
+    // No currency — only need XAU/USD and timestamps, skip heavy arrays
+    const history = await GoldRate.find(query)
+      .sort({ fetchedAt: -1 })
+      .limit(recordLimit)
+      .select("fetchedAt goldXAUUSD goldRateUSD")
+      .lean();
+
+    const chartData = history.reverse().map((record) => ({
+      timestamp: record.fetchedAt,
+      goldXAUUSD: record.goldXAUUSD,
+      goldRateUSD: record.goldRateUSD,
+    }));
+
     res.status(200).json({
       success: true,
-      count: history.length,
+      count: chartData.length,
       period,
-      data: history,
       chartData,
     });
   } catch (error) {
@@ -444,6 +477,7 @@ exports.getRateHistory = async (req, res) => {
 // Auto-update system
 let goldFetchInterval = null;
 let dbSaveInterval = null;
+let midnightCleanupInterval = null;
 
 // Export the auto-update function for use in server.js
 exports.startAutoUpdate = () => {
@@ -451,9 +485,12 @@ exports.startAutoUpdate = () => {
   console.log("   Using api.gold-api.com for gold prices");
   console.log("   Using exchangerate-api.com for exchange rates");
 
-  // Initial fetch and save
-  fetchAndCalculateRates(true).catch((err) => {
-    console.error("Initial rate fetch failed:", err);
+  // Warm up exchange rates from DB before first API fetch
+  warmUpExchangeRatesFromDB().then(() => {
+    // Initial fetch and save (exchange rates now pre-loaded if DB has records)
+    fetchAndCalculateRates(true).catch((err) => {
+      console.error("Initial rate fetch failed:", err);
+    });
   });
 
   // Update real-time cache every 10 seconds (fetch gold price)
@@ -467,12 +504,12 @@ exports.startAutoUpdate = () => {
       });
   }, 10000);
 
-  // Save to database every 15 minutes
+  // Save to database every 1 hour
   dbSaveInterval = setInterval(() => {
     fetchAndCalculateRates(true).catch((err) => {
       console.error("Database save failed:", err);
     });
-  }, 900000); // 15 minutes
+  }, 3600000); // 1 hour
 
   // Schedule cleanup at midnight every day
   const scheduleMidnightCleanup = () => {
@@ -489,12 +526,12 @@ exports.startAutoUpdate = () => {
       cleanupOldRates().catch((err) => {
         console.error("Midnight cleanup failed:", err);
       });
-      // Reschedule for the next midnight
-      setInterval(() => {
+      // Reschedule every 24 hours and store ref for cleanup
+      midnightCleanupInterval = setInterval(() => {
         cleanupOldRates().catch((err) => {
           console.error("Midnight cleanup failed:", err);
         });
-      }, 86400000); // every 24 hours from first midnight
+      }, 86400000);
     }, msUntilMidnight);
 
     console.log(
@@ -505,13 +542,14 @@ exports.startAutoUpdate = () => {
 
   console.log("✅ Auto-update system started:");
   console.log("   - Real-time fetch: Every 10 seconds");
-  console.log("   - Database save: Every 15 minutes");
+  console.log("   - Database save: Every 1 hour");
   console.log("   - Exchange rates: Every 2 minutes");
 
   // Return cleanup function
   return () => {
     if (goldFetchInterval) clearInterval(goldFetchInterval);
     if (dbSaveInterval) clearInterval(dbSaveInterval);
+    if (midnightCleanupInterval) clearInterval(midnightCleanupInterval);
     console.log("🛑 Auto-update system stopped");
   };
 };
