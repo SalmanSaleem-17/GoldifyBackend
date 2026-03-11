@@ -9,7 +9,7 @@ module.exports = {
   transport: {
     host: process.env.EMAIL_HOST,
     port: process.env.EMAIL_PORT,
-    secure: false, // true for 465, false for other ports
+    secure: process.env.EMAIL_SECURE === "true", // true for port 465 (SSL), false for 587 (TLS)
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
